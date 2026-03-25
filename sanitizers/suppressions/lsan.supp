@@ -17,14 +17,6 @@
 # Suppressions that share the same justification may be organized in a single block.
 
 
-# Rust's standard runtime (std::rt::lang_start) allocates thread-local storage (TLS) that is not
-# cleaned up at the time LSan runs its atexit sweep. LSan reports this as a memory leak because
-# TLS destructors are invoked after LSan's atexit handler, so the memory appears live but
-# unreachable at leak-check time. This affects all Rust binaries regardless of async runtime used.
-# Rust sanitizer support upstream: https://github.com/rust-lang/rust/issues/39699.
-# We plan to re-verify the behavior and perform further analysis under Ticket-252536.
-leak:std::rt::lang_start
-
 # GoogleTest uses global singletons and static state that are intentionally
 # never freed. These are by design and not real leaks.
 leak:testing::internal::RegisterTest

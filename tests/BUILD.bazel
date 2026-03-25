@@ -12,15 +12,19 @@
 # *******************************************************************************
 
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_test")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+# Required as input to the clang-tidy aspect (configs = [Label("//:.clang-tidy")]).
+exports_files([".clang-tidy"])
 
 # ==============================================================================
-# Positive tests - verify clean code passes with all sanitizers
+# Positive tests - verify clean code passes with all sanitizers and clang-tidy
 # ==============================================================================
 
 cc_test(
     name = "sample_test",
     srcs = ["sample_test.cpp"],
-    target_compatible_with = ["@score_cpp_policies//sanitizers/constraints:no_tsan"],  # TSAN has known issues with googletest
+    tags = ["no-tsan"],  # TSAN has known issues with googletest
     deps = [
         "@googletest//:gtest",
         "@googletest//:gtest_main",
@@ -67,7 +71,7 @@ sh_test(
         "55",
     ],
     data = [":asan_fail_test"],
-    target_compatible_with = ["@score_cpp_policies//sanitizers/constraints:no_tsan"],
+    tags = ["no-tsan"],
 )
 
 sh_test(
@@ -78,7 +82,7 @@ sh_test(
         "55",
     ],
     data = [":lsan_fail_test"],
-    target_compatible_with = ["@score_cpp_policies//sanitizers/constraints:no_tsan"],
+    tags = ["no-tsan"],
 )
 
 sh_test(
@@ -89,7 +93,7 @@ sh_test(
         "55",
     ],
     data = [":tsan_fail_test"],
-    target_compatible_with = ["@score_cpp_policies//sanitizers/constraints:no_asan_ubsan_lsan"],
+    tags = ["no-asan", "no-lsan", "no-ubsan"],
 )
 
 sh_test(
@@ -100,6 +104,6 @@ sh_test(
         "55",
     ],
     data = [":ubsan_fail_test"],
-    target_compatible_with = ["@score_cpp_policies//sanitizers/constraints:no_tsan"],
+    tags = ["no-tsan"],
 )
 

@@ -1,8 +1,6 @@
-# score_cpp_policies
+# Sanitizers
 
-Centralized C++ quality tool policies for Eclipse S-CORE, providing sanitizer configurations reusable across all S-CORE modules (logging, communication, baselibs, etc.).
-
-Planned: clang-tidy, clang-format, code coverage policies.
+Centralized sanitizer configurations and Bazel feature flags for Eclipse S-CORE C++ modules.
 
 ## What This Provides
 
@@ -32,7 +30,39 @@ bazel_dep(name = "score_cpp_policies", version = "0.0.0")
 
 ### Configure Sanitizers
 
-Copy [`sanitizers/sanitizers.bazelrc`](sanitizers/sanitizers.bazelrc) into your repository's `.bazelrc`.
+Copy the sanitizer configs from `sanitizers/sanitizers.bazelrc` into your `.bazelrc` and adapt the paths:
+
+```bazelrc
+# ASan + UBSan + LSan (Combined)
+build:asan_ubsan_lsan --features=asan
+build:asan_ubsan_lsan --features=ubsan
+build:asan_ubsan_lsan --features=lsan
+build:asan_ubsan_lsan --platform_suffix=asan_ubsan_lsan
+test:asan_ubsan_lsan --config=with_debug_symbols
+test:asan_ubsan_lsan --test_tag_filters=-no-asan,-no-lsan,-no-ubsan
+test:asan_ubsan_lsan --@score_cpp_policies//sanitizers/flags:sanitizer=asan_ubsan_lsan
+test:asan_ubsan_lsan --run_under=@score_cpp_policies//sanitizers:wrapper
+
+# Shortcuts
+build:asan  --config=asan_ubsan_lsan
+test:asan  --test_tag_filters=-no-asan
+build:ubsan --config=asan_ubsan_lsan
+test:ubsan --test_tag_filters=-no-ubsan
+build:lsan  --config=asan_ubsan_lsan
+test:lsan  --test_tag_filters=-no-lsan
+
+# ThreadSanitizer
+build:tsan --features=tsan
+build:tsan --platform_suffix=tsan
+test:tsan --config=with_debug_symbols
+test:tsan --cxxopt=-O1
+test:tsan --test_tag_filters=-no-tsan
+test:tsan --@score_cpp_policies//sanitizers/flags:sanitizer=tsan
+test:tsan --run_under=@score_cpp_policies//sanitizers:wrapper
+```
+
+> **Note**: The `--run_under=@score_cpp_policies//sanitizers:wrapper` automatically loads runtime
+> options and suppressions from the module.
 
 ### Run Tests
 
@@ -73,9 +103,13 @@ Default suppressions for common third-party libraries are included:
 | `sanitizers/suppressions/tsan.supp` | TSan | stdlib false positives, Rust test suppressions |
 | `sanitizers/suppressions/ubsan.supp` | UBSan | *(empty)* |
 
-**Adding project-specific suppressions:** Currently, the wrapper loads suppressions from this module only. For project-specific suppressions, you'll need to create a custom wrapper or extend the environment variables in your `.bazelrc`. This is a known limitation being tracked for future improvements.
+**Adding project-specific suppressions:** Currently, the wrapper loads suppressions from this
+module only. For project-specific suppressions, you'll need to create a custom wrapper or extend
+the environment variables in your `.bazelrc`. This is a known limitation being tracked for future
+improvements.
 
-> **Runtime Options**: See [`sanitizers/templates/`](sanitizers/templates/) for detailed documentation of all sanitizer options configured by the wrapper.
+> **Runtime Options**: See [`templates/`](templates/) for detailed documentation of all sanitizer
+> options configured by the wrapper.
 
 ## Constraint System
 
@@ -95,21 +129,3 @@ cc_library(
 | `@score_cpp_policies//sanitizers/constraints:no_tsan` | Skip when `--config=tsan` |
 | `@score_cpp_policies//sanitizers/constraints:no_asan_ubsan_lsan` | Skip when `--config=asan_ubsan_lsan` |
 | `@score_cpp_policies//sanitizers/constraints:any_sanitizer` | Only builds with a sanitizer enabled |
-
-## Testing This Repository
-
-```bash
-cd tests
-
-bazel test --config=asan_ubsan_lsan //...
-bazel test --config=tsan //...
-bazel test --config=clang-tidy //...
-```
-
-## Contributing
-
-See [CONTRIBUTION.md](CONTRIBUTION.md) for guidelines. All commits must follow [Eclipse Foundation commit rules](https://www.eclipse.org/projects/handbook/#resources-commit). Contributors must sign the ECA and DCO.
-
-## License
-
-Apache License 2.0 — see [LICENSE](LICENSE) for details.

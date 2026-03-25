@@ -12,9 +12,6 @@
 # *******************************************************************************
 
 exports_files(
-    [
-        "expand_template.bzl",
-        "merge_suppressions.bzl",
-    ],
-    visibility = ["//visibility:public"],
+    ["expand_template.bzl"],
+    visibility = ["//sanitizers:__pkg__"],
 )
