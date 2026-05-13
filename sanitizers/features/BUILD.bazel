@@ -1,0 +1,152 @@
+# *******************************************************************************
+# Copyright (c) 2026 Contributors to the Eclipse Foundation
+#
+# See the NOTICE file(s) distributed with this work for additional
+# information regarding copyright ownership.
+#
+# This program and the accompanying materials are made available under the
+# terms of the Apache License Version 2.0 which is available at
+# https://www.apache.org/licenses/LICENSE-2.0
+#
+# SPDX-License-Identifier: Apache-2.0
+# *******************************************************************************
+
+load("@rules_cc//cc/toolchains:args.bzl", "cc_args")
+load("@rules_cc//cc/toolchains:feature.bzl", "cc_feature")
+load("@rules_cc//cc/toolchains:mutually_exclusive_category.bzl", "cc_mutually_exclusive_category")
+
+# Minimal debug info for stack traces (-g1) must be combined with command line option --strip=never
+cc_args(
+    name = "debug_symbols_args",
+    actions = [
+        "@rules_cc//cc/toolchains/actions:compile_actions",
+    ],
+    args = ["-g1"],
+    visibility = ["//visibility:public"],
+)
+
+cc_feature(
+    name = "debug_symbols",
+    feature_name = "debug_symbols",
+    args = [":debug_symbols_args"],
+    visibility = ["//visibility:public"],
+)
+
+cc_mutually_exclusive_category(
+    name = "sanitizer",
+    visibility = ["//visibility:public"],
+)
+
+# Compile + link flags for ASan + UBSan + LSan combined
+cc_args(
+    name = "asan_ubsan_lsan_compile_args",
+    actions = [
+        "@rules_cc//cc/toolchains/actions:compile_actions",
+    ],
+    args = ["-fsanitize=undefined,address,leak"],
+    visibility = ["//visibility:public"],
+)
+
+cc_args(
+    name = "asan_ubsan_lsan_link_args",
+    actions = [
+        "@rules_cc//cc/toolchains/actions:link_actions",
+    ],
+    args = [
+        "-fsanitize=undefined,address,leak",
+        "-fsanitize-link-c++-runtime",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+cc_feature(
+    name = "asan_ubsan_lsan",
+    feature_name = "score_asan_ubsan_lsan",
+    args = [
+        ":asan_ubsan_lsan_compile_args",
+        ":asan_ubsan_lsan_link_args",
+    ],
+    implies = ["debug_symbols"],
+    mutually_exclusive = [":sanitizer"],
+    visibility = ["//visibility:public"],
+)
+
+# Compile + link flags for ThreadSanitizer
+cc_args(
+    name = "tsan_compile_args",
+    actions = [
+        "@rules_cc//cc/toolchains/actions:compile_actions",
+    ],
+    args = [
+        "-fsanitize=thread",
+        # Recommended by Clang TSan docs: https://clang.llvm.org/docs/ThreadSanitizer.html
+        "-O1",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+cc_args(
+    name = "tsan_link_args",
+    actions = [
+        "@rules_cc//cc/toolchains/actions:link_actions",
+    ],
+    args = [
+        "-fsanitize=thread",
+        "-fsanitize-link-c++-runtime",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+cc_feature(
+    name = "tsan",
+    feature_name = "score_tsan",
+    args = [
+        ":tsan_compile_args",
+        ":tsan_link_args",
+    ],
+    implies = ["debug_symbols"],
+    mutually_exclusive = [":sanitizer"],
+    visibility = ["//visibility:public"],
+)
+
+# ==============================================================================
+# GCC-compatible features (omit -fsanitize-link-c++-runtime which is Clang-only)
+# ==============================================================================
+
+cc_args(
+    name = "asan_ubsan_lsan_link_args_gcc",
+    actions = ["@rules_cc//cc/toolchains/actions:link_actions"],
+    args = ["-fsanitize=undefined,address,leak"],
+    visibility = ["//visibility:public"],
+)
+
+cc_feature(
+    name = "asan_ubsan_lsan_gcc",
+    feature_name = "score_asan_ubsan_lsan",
+    args = [
+        ":asan_ubsan_lsan_compile_args",
+        ":asan_ubsan_lsan_link_args_gcc",
+    ],
+    implies = ["debug_symbols"],
+    mutually_exclusive = [":sanitizer"],
+    visibility = ["//visibility:public"],
+)
+
+cc_args(
+    name = "tsan_link_args_gcc",
+    actions = ["@rules_cc//cc/toolchains/actions:link_actions"],
+    args = ["-fsanitize=thread"],
+    visibility = ["//visibility:public"],
+)
+
+cc_feature(
+    name = "tsan_gcc",
+    feature_name = "score_tsan",
+    args = [
+        ":tsan_compile_args",
+        ":tsan_link_args_gcc",
+    ],
+    implies = ["debug_symbols"],
+    mutually_exclusive = [":sanitizer"],
+    visibility = ["//visibility:public"],
+)
