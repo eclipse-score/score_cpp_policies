@@ -1,0 +1,69 @@
+# *******************************************************************************
+# Copyright (c) 2026 Contributors to the Eclipse Foundation
+#
+# See the NOTICE file(s) distributed with this work for additional
+# information regarding copyright ownership.
+#
+# This program and the accompanying materials are made available under the
+# terms of the Apache License Version 2.0 which is available at
+# https://www.apache.org/licenses/LICENSE-2.0
+#
+# SPDX-License-Identifier: Apache-2.0
+# *******************************************************************************
+
+load("//sanitizers/private:expand_template.bzl", "expand_template")
+
+exports_files(
+    ["sanitizers.bazelrc"],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "env_template",
+    srcs = select({
+        "//sanitizers/flags:tsan": ["templates/tsan.env.template"],
+        "//sanitizers/flags:asan_ubsan_lsan": ["templates/asan_ubsan_lsan.env.template"],
+    }),
+    target_compatible_with = ["//sanitizers/constraints:any_sanitizer"],
+)
+
+[
+    expand_template(
+        name = name + "_env",
+        out = name + "_sanitizer.env",
+        substitutions = {"%ROOT%": root},
+        target_compatible_with = ["//sanitizers/constraints:any_sanitizer"],
+        template = ":env_template",
+        visibility = ["//visibility:public"],
+    )
+    for name, root in [
+        ("absolute", "/"),
+        ("relative", "./"),
+    ]
+]
+
+filegroup(
+    name = "suppressions",
+    srcs = select({
+        "//sanitizers/flags:tsan": ["suppressions/tsan.supp"],
+        "//sanitizers/flags:asan_ubsan_lsan": [
+            "suppressions/asan.supp",
+            "suppressions/lsan.supp",
+            "suppressions/ubsan.supp",
+        ],
+        "//conditions:default": [],
+    }),
+    target_compatible_with = ["//sanitizers/constraints:any_sanitizer"],
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "wrapper",
+    srcs = ["wrapper.sh"],
+    data = [
+        ":relative_env",
+        ":suppressions",
+    ],
+    target_compatible_with = ["//sanitizers/constraints:any_sanitizer"],
+    visibility = ["//visibility:public"],
+)

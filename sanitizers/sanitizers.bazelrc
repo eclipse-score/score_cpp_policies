@@ -1,0 +1,53 @@
+# *******************************************************************************
+# Copyright (c) 2026 Contributors to the Eclipse Foundation
+#
+# See the NOTICE file(s) distributed with this work for additional
+# information regarding copyright ownership.
+#
+# This program and the accompanying materials are made available under the
+# terms of the Apache License Version 2.0 which is available at
+# https://www.apache.org/licenses/LICENSE-2.0
+#
+# SPDX-License-Identifier: Apache-2.0
+# *******************************************************************************
+
+# ==============================================================================
+# Centralized Sanitizer Configurations for S-CORE C++ Modules
+# ==============================================================================
+#
+# Available configurations:
+#   --config=asan_ubsan_lsan  : AddressSanitizer + UndefinedBehaviorSanitizer + LeakSanitizer (Combined)
+#   --config=asan             : AddressSanitizer only
+#   --config=lsan             : LeakSanitizer only
+#   --config=tsan             : ThreadSanitizer (cannot be combined with ASan)
+#   --config=ubsan            : UndefinedBehaviorSanitizer only
+# ==============================================================================
+
+# -g1: Minimal debug info (function names + line numbers) for sanitizer stack traces
+# GCC and Clang compatible. Note: Clang's -gline-tables-only provides column info but is not GCC-compatible.
+test:with_debug_symbols --features=debug_symbols
+# Disable stripping so debug symbols are preserved at the final link stage
+build:with_debug_symbols --strip=never
+
+# AddressSanitizer + UndefinedBehaviorSanitizer + LeakSanitizer (Combined)
+build:asan_ubsan_lsan --features=score_asan_ubsan_lsan
+build:asan_ubsan_lsan --platform_suffix=asan_ubsan_lsan
+build:asan_ubsan_lsan --config=with_debug_symbols
+build:asan_ubsan_lsan --@score_cpp_policies//sanitizers/flags:sanitizer=asan_ubsan_lsan
+test:asan_ubsan_lsan --run_under=@score_cpp_policies//sanitizers:wrapper
+
+# AddressSanitizer only
+build:asan  --config=asan_ubsan_lsan
+
+# UndefinedBehaviorSanitizer only
+build:ubsan --config=asan_ubsan_lsan
+
+# LeakSanitizer only
+build:lsan  --config=asan_ubsan_lsan
+
+# ThreadSanitizer (cannot be combined with ASan/LSan)
+build:tsan --features=score_tsan
+build:tsan --platform_suffix=tsan
+build:tsan --config=with_debug_symbols
+build:tsan --@score_cpp_policies//sanitizers/flags:sanitizer=tsan
+test:tsan --run_under=@score_cpp_policies//sanitizers:wrapper

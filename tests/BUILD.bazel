@@ -1,0 +1,105 @@
+# *******************************************************************************
+# Copyright (c) 2026 Contributors to the Eclipse Foundation
+#
+# See the NOTICE file(s) distributed with this work for additional
+# information regarding copyright ownership.
+#
+# This program and the accompanying materials are made available under the
+# terms of the Apache License Version 2.0 which is available at
+# https://www.apache.org/licenses/LICENSE-2.0
+#
+# SPDX-License-Identifier: Apache-2.0
+# *******************************************************************************
+
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_test")
+
+# ==============================================================================
+# Positive tests - verify clean code passes with all sanitizers
+# ==============================================================================
+
+cc_test(
+    name = "sample_test",
+    srcs = ["sample_test.cpp"],
+    target_compatible_with = ["@score_cpp_policies//sanitizers/constraints:no_tsan"],  # TSAN has known issues with googletest
+    deps = [
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+    ],
+)
+
+# ==============================================================================
+# Negative test binaries - intentionally trigger sanitizer violations
+# ==============================================================================
+
+cc_binary(
+    name = "asan_fail_test",
+    srcs = ["negative/asan_fail.cpp"],
+    testonly = True,
+)
+
+cc_binary(
+    name = "lsan_fail_test",
+    srcs = ["negative/lsan_fail.cpp"],
+    testonly = True,
+)
+
+cc_binary(
+    name = "tsan_fail_test",
+    srcs = ["negative/tsan_fail.cpp"],
+    testonly = True,
+)
+
+cc_binary(
+    name = "ubsan_fail_test",
+    srcs = ["negative/ubsan_fail.cpp"],
+    testonly = True,
+)
+
+# ==============================================================================
+# Shell tests - verify sanitizers catch violations (exit code 55)
+# ==============================================================================
+
+sh_test(
+    name = "asan_fail",
+    srcs = ["negative/verify_sanitizer_failure.sh"],
+    args = [
+        "$(location :asan_fail_test)",
+        "55",
+    ],
+    data = [":asan_fail_test"],
+    target_compatible_with = ["@score_cpp_policies//sanitizers/constraints:no_tsan"],
+)
+
+sh_test(
+    name = "lsan_fail",
+    srcs = ["negative/verify_sanitizer_failure.sh"],
+    args = [
+        "$(location :lsan_fail_test)",
+        "55",
+    ],
+    data = [":lsan_fail_test"],
+    target_compatible_with = ["@score_cpp_policies//sanitizers/constraints:no_tsan"],
+)
+
+sh_test(
+    name = "tsan_fail",
+    srcs = ["negative/verify_sanitizer_failure.sh"],
+    args = [
+        "$(location :tsan_fail_test)",
+        "55",
+    ],
+    data = [":tsan_fail_test"],
+    target_compatible_with = ["@score_cpp_policies//sanitizers/constraints:no_asan_ubsan_lsan"],
+)
+
+sh_test(
+    name = "ubsan_fail",
+    srcs = ["negative/verify_sanitizer_failure.sh"],
+    args = [
+        "$(location :ubsan_fail_test)",
+        "55",
+    ],
+    data = [":ubsan_fail_test"],
+    target_compatible_with = ["@score_cpp_policies//sanitizers/constraints:no_tsan"],
+)
+
