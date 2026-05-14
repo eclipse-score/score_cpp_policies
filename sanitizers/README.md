@@ -1,6 +1,28 @@
+<!--
+  Copyright (c) 2026 Contributors to the Eclipse Foundation
+
+  See the NOTICE file(s) distributed with this work for additional
+  information regarding copyright ownership.
+
+  This program and the accompanying materials are made available under the
+  terms of the Apache License Version 2.0 which is available at
+  https://www.apache.org/licenses/LICENSE-2.0
+
+  SPDX-License-Identifier: Apache-2.0
+-->
 # Sanitizers
 
 Centralized sanitizer configurations and Bazel feature flags for Eclipse S-CORE C++ modules.
+
+> **Limitation — project-specific suppressions**: The wrapper currently loads suppressions from
+> this module only. There is no override mechanism for consumers to add their own suppressions
+> without forking the wrapper. This is a known limitation being tracked for future improvements.
+> Rust consumers must note that `leak:std::rt::lang_start` is included in `lsan.supp`; if you
+> remove it from a fork, Rust TLS-on-shutdown will be flagged as a real leak.
+
+> **Toolchain requirement**: The sanitizer feature flags (`asan`, `ubsan`, `lsan`, `tsan`) require
+> a toolchain that exposes those features, e.g. `toolchains_llvm` 1.5+. GCC toolchains do not
+> expose these features by default.
 
 ## What This Provides
 
@@ -103,10 +125,7 @@ Default suppressions for common third-party libraries are included:
 | `sanitizers/suppressions/tsan.supp` | TSan | stdlib false positives, Rust test suppressions |
 | `sanitizers/suppressions/ubsan.supp` | UBSan | *(empty)* |
 
-**Adding project-specific suppressions:** Currently, the wrapper loads suppressions from this
-module only. For project-specific suppressions, you'll need to create a custom wrapper or extend
-the environment variables in your `.bazelrc`. This is a known limitation being tracked for future
-improvements.
+**Suppression files** are loaded automatically by the wrapper — no manual setup required.
 
 > **Runtime Options**: See [`templates/`](templates/) for detailed documentation of all sanitizer
 > options configured by the wrapper.

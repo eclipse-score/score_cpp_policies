@@ -22,7 +22,7 @@ bazel_dep(name = "rules_shell", version = "0.6.1")
 
 bazel_dep(name = "rules_go", version = "0.60.0", repo_name = "io_bazel_rules_go")
 
-bazel_dep(name = "score_cpp_policies", version = "")
+bazel_dep(name = "score_cpp_policies", version = "0.0.0")
 local_path_override(
     module_name = "score_cpp_policies",
     path = "..",

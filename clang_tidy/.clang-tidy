@@ -30,7 +30,7 @@ WarningsAsErrors: >-
   clang-analyzer-*
 
 # Exclude third-party and generated headers from analysis.
-HeaderFilterRegex: '^(?!.*/third_party/).*'
+HeaderFilterRegex: '^(?!.*/(third_party|bazel-out|external)/).*$'
 
 FormatStyle: file
 

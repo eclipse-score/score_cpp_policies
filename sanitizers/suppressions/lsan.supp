@@ -23,3 +23,7 @@ leak:testing::internal::RegisterTest
 leak:testing::UnitTest::GetInstance
 leak:testing::internal::UnitTestImpl
 
+# Rust runtime thread-local storage cleanup on shutdown is intentionally not
+# freed. Harmless when no Rust is present; required when Rust crates are linked.
+leak:std::rt::lang_start
+

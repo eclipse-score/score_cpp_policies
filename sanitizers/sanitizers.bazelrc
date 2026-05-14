@@ -25,8 +25,8 @@
 
 # -g1: Minimal debug info (function names + line numbers) for sanitizer stack traces
 # GCC and Clang compatible. Note: Clang's -gline-tables-only provides column info but is not GCC-compatible.
-test:with_debug_symbols --cxxopt=-g1
-test:with_debug_symbols --strip=never
+build:with_debug_symbols --cxxopt=-g1
+build:with_debug_symbols --strip=never
 
 # AddressSanitizer + UndefinedBehaviorSanitizer + LeakSanitizer (Combined)
 build:asan_ubsan_lsan --features=asan
@@ -40,15 +40,15 @@ test:asan_ubsan_lsan --run_under=@score_cpp_policies//sanitizers:wrapper
 
 # AddressSanitizer only
 build:asan  --config=asan_ubsan_lsan
-build:asan  --test_tag_filters=-no-asan
+test:asan   --test_tag_filters=-no-asan
 
 # UndefinedBehaviorSanitizer only
 build:ubsan --config=asan_ubsan_lsan
-build:ubsan --test_tag_filters=-no-ubsan
+test:ubsan  --test_tag_filters=-no-ubsan
 
 # LeakSanitizer only
 build:lsan  --config=asan_ubsan_lsan
-build:lsan  --test_tag_filters=-no-lsan
+test:lsan   --test_tag_filters=-no-lsan
 
 # ThreadSanitizer (cannot be combined with ASan/LSan)
 build:tsan --features=tsan
