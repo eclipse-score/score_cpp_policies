@@ -12,7 +12,6 @@
 # *******************************************************************************
 
 load("//sanitizers/private:expand_template.bzl", "expand_template")
-load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 
 exports_files(
     ["sanitizers.bazelrc"],
@@ -52,13 +51,9 @@ filegroup(
             "suppressions/lsan.supp",
             "suppressions/ubsan.supp",
         ],
-        "//conditions:default": [
-            "suppressions/asan.supp",
-            "suppressions/lsan.supp",
-            "suppressions/tsan.supp",
-            "suppressions/ubsan.supp",
-        ],
+        "//conditions:default": [],
     }),
+    target_compatible_with = ["//sanitizers/constraints:any_sanitizer"],
     visibility = ["//visibility:public"],
 )
 
