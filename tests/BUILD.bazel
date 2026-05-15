@@ -13,6 +13,9 @@
 
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_test")
 
+# Required as input to the clang-tidy aspect (configs = [Label("//:.clang-tidy")]).
+exports_files([".clang-tidy"])
+
 # ==============================================================================
 # Positive tests - verify clean code passes with all sanitizers
 # ==============================================================================

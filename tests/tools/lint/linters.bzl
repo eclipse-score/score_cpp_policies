@@ -11,14 +11,13 @@
 # SPDX-License-Identifier: Apache-2.0
 # *******************************************************************************
 
-module(
-    name = "score_cpp_policies",
-    version = "0.0.0",
+"""Clang-tidy aspect and test rule for the score_cpp_policies test workspace."""
+
+load("@score_cpp_policies//clang_tidy:defs.bzl", "make_clang_tidy_aspect", "make_clang_tidy_test")
+
+clang_tidy_aspect = make_clang_tidy_aspect(
+    binary = Label("@llvm_toolchain//:clang-tidy"),
+    configs = [Label("//:.clang-tidy")],
 )
 
-bazel_dep(name = "bazel_skylib", version = "1.8.2")
-bazel_dep(name = "platforms", version = "0.0.10")
-bazel_dep(name = "rules_cc", version = "0.1.5")
-
-bazel_dep(name = "aspect_rules_lint", version = "2.5.0")
-
+clang_tidy_test = make_clang_tidy_test(aspect = clang_tidy_aspect)
