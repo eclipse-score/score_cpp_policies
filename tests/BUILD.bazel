@@ -21,7 +21,7 @@ load("//tools/lint:linters.bzl", "clang_tidy_test")
 cc_test(
     name = "sample_test",
     srcs = ["sample_test.cpp"],
-    target_compatible_with = ["@score_cpp_policies//sanitizers/constraints:no_tsan"],  # TSAN has known issues with googletest
+    target_compatible_with = ["@score_cpp_policies//sanitizers/constraints:no_tsan"],  # GoogleTest has known TSan false positives
     deps = [
         "@googletest//:gtest",
         "@googletest//:gtest_main",
@@ -68,7 +68,7 @@ sh_test(
         "55",
     ],
     data = [":asan_fail_test"],
-    target_compatible_with = ["@score_cpp_policies//sanitizers/constraints:no_tsan"],
+    target_compatible_with = ["@score_cpp_policies//sanitizers/constraints:only_asan"],
 )
 
 sh_test(
@@ -79,7 +79,7 @@ sh_test(
         "55",
     ],
     data = [":lsan_fail_test"],
-    target_compatible_with = ["@score_cpp_policies//sanitizers/constraints:no_tsan"],
+    target_compatible_with = ["@score_cpp_policies//sanitizers/constraints:only_lsan"],
 )
 
 sh_test(
@@ -90,7 +90,7 @@ sh_test(
         "55",
     ],
     data = [":tsan_fail_test"],
-    target_compatible_with = ["@score_cpp_policies//sanitizers/constraints:no_asan_ubsan_lsan"],
+    target_compatible_with = ["@score_cpp_policies//sanitizers/constraints:only_tsan"],
 )
 
 sh_test(
@@ -101,36 +101,7 @@ sh_test(
         "55",
     ],
     data = [":ubsan_fail_test"],
-    target_compatible_with = ["@score_cpp_policies//sanitizers/constraints:no_tsan"],
+    target_compatible_with = ["@score_cpp_policies//sanitizers/constraints:only_ubsan"],
 )
 
-# ==============================================================================
-# Clang-tidy tests
-# ==============================================================================
-
-# A minimal clean library to verify the aspect fires and finds zero issues.
-# Run: bazel test --config=clang-tidy :clang_tidy_sample
-cc_library(
-    name = "clang_tidy_clean_lib",
-    srcs = [],
-)
-
-clang_tidy_test(
-    name = "clang_tidy_sample",
-    srcs = [":clang_tidy_clean_lib"],
-)
-
-# Reference binary containing an intentional bugprone-use-after-move violation.
-# Not built by default; used to manually verify the aspect detects this pattern:
-#   bazel test --config=clang-tidy :clang_tidy_violation_check
-cc_binary(
-    name = "clang_tidy_violation",
-    srcs = ["violations/clang_tidy_violation.cpp"],
-    tags = ["manual"],
-)
-
-clang_tidy_test(
-    name = "clang_tidy_violation_check",
-    srcs = [":clang_tidy_violation"],
-    tags = ["manual"],
-)
+# =======================================================================

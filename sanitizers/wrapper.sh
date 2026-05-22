@@ -15,8 +15,13 @@
 
 WRAPPER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-IFS='
-'
-# shellcheck disable=SC2046
-export $(sed "s|\./sanitizers/|$WRAPPER_DIR/|g" "$WRAPPER_DIR/relative_sanitizer.env" | grep -v '^#' | grep -v '^$')
+for env_file in "$WRAPPER_DIR"/*_relative_sanitizer.env; do
+    [ -f "$env_file" ] || continue
+    while IFS= read -r line || [ -n "$line" ]; do
+        [[ "$line" =~ ^# ]] && continue
+        [[ -z "$line" ]] && continue
+        export "${line?}"
+    done < <(sed "s|\./sanitizers/|$WRAPPER_DIR/|g" "$env_file")
+done
+
 exec "$@"

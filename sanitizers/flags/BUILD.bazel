@@ -12,42 +12,83 @@
 # *******************************************************************************
 
 load("@bazel_skylib//lib:selects.bzl", "selects")
-load("@bazel_skylib//rules:common_settings.bzl", "string_flag")
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 
-string_flag(
-    name = "sanitizer",
-    build_setting_default = "none",
-    values = [
-        "none",
-        "asan_ubsan_lsan",
-        "tsan",
-    ],
+bool_flag(
+    name = "asan",
+    build_setting_default = False,
     visibility = ["//visibility:public"],
 )
 
 config_setting(
-    name = "none",
-    flag_values = {":sanitizer": "none"},
+    name = "asan_on",
+    flag_values = {":asan": "True"},
+    visibility = ["//visibility:public"],
+)
+
+bool_flag(
+    name = "ubsan",
+    build_setting_default = False,
     visibility = ["//visibility:public"],
 )
 
 config_setting(
-    name = "asan_ubsan_lsan",
-    flag_values = {":sanitizer": "asan_ubsan_lsan"},
+    name = "ubsan_on",
+    flag_values = {":ubsan": "True"},
+    visibility = ["//visibility:public"],
+)
+
+bool_flag(
+    name = "lsan",
+    build_setting_default = False,
     visibility = ["//visibility:public"],
 )
 
 config_setting(
+    name = "lsan_on",
+    flag_values = {":lsan": "True"},
+    visibility = ["//visibility:public"],
+)
+
+bool_flag(
     name = "tsan",
-    flag_values = {":sanitizer": "tsan"},
+    build_setting_default = False,
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "tsan_on",
+    flag_values = {":tsan": "True"},
     visibility = ["//visibility:public"],
 )
 
 selects.config_setting_group(
     name = "any_sanitizer",
     match_any = [
-        ":asan_ubsan_lsan",
-        ":tsan",
+        ":asan_on",
+        ":ubsan_on",
+        ":lsan_on",
+        ":tsan_on",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+selects.config_setting_group(
+    name = "any_asan_ubsan_lsan",
+    match_any = [
+        ":asan_on",
+        ":ubsan_on",
+        ":lsan_on",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+selects.config_setting_group(
+    name = "asan_ubsan_lsan",
+    match_all = [
+        ":asan_on",
+        ":ubsan_on",
+        ":lsan_on",
     ],
     visibility = ["//visibility:public"],
 )

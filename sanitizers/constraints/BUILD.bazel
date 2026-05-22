@@ -31,9 +31,27 @@ alias(
 )
 
 alias(
-    name = "no_asan_ubsan_lsan",
+    name = "no_asan",
     actual = select({
-        "//sanitizers/flags:asan_ubsan_lsan": "@platforms//:incompatible",
+        "//sanitizers/flags:asan_on": "@platforms//:incompatible",
+        "//conditions:default": ":always_true",
+    }),
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "no_ubsan",
+    actual = select({
+        "//sanitizers/flags:ubsan_on": "@platforms//:incompatible",
+        "//conditions:default": ":always_true",
+    }),
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "no_lsan",
+    actual = select({
+        "//sanitizers/flags:lsan_on": "@platforms//:incompatible",
         "//conditions:default": ":always_true",
     }),
     visibility = ["//visibility:public"],
@@ -42,8 +60,54 @@ alias(
 alias(
     name = "no_tsan",
     actual = select({
-        "//sanitizers/flags:tsan": "@platforms//:incompatible",
+        "//sanitizers/flags:tsan_on": "@platforms//:incompatible",
         "//conditions:default": ":always_true",
+    }),
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "no_asan_ubsan_lsan",
+    actual = select({
+        "//sanitizers/flags:any_asan_ubsan_lsan": "@platforms//:incompatible",
+        "//conditions:default": ":always_true",
+    }),
+    visibility = ["//visibility:public"],
+)
+
+# "Only when" constraints — for negative tests that must run only under their specific sanitizer.
+alias(
+    name = "only_asan",
+    actual = select({
+        "//sanitizers/flags:asan_on": ":always_true",
+        "//conditions:default": "@platforms//:incompatible",
+    }),
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "only_ubsan",
+    actual = select({
+        "//sanitizers/flags:ubsan_on": ":always_true",
+        "//conditions:default": "@platforms//:incompatible",
+    }),
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "only_lsan",
+    actual = select({
+        "//sanitizers/flags:lsan_on": ":always_true",
+        "//conditions:default": "@platforms//:incompatible",
+    }),
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "only_tsan",
+    actual = select({
+        "//sanitizers/flags:tsan_on": ":always_true",
+        "//conditions:default": "@platforms//:incompatible",
     }),
     visibility = ["//visibility:public"],
 )
