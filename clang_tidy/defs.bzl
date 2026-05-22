@@ -11,69 +11,55 @@
 # SPDX-License-Identifier: Apache-2.0
 # *******************************************************************************
 
-"""Clang-tidy support macros for S-CORE C++ modules.
+"""Public API for the S-CORE centralized clang-tidy policy.
 
-Provides macros to create a clang-tidy aspect and test rule with S-CORE defaults.
-Consuming projects call make_clang_tidy_aspect() in their own linters.bzl to
-create a project-specific aspect bound to their toolchain and .clang-tidy config.
+Consumers load make_clang_tidy_aspect and make_clang_tidy_test from this file
+instead of calling aspect_rules_lint directly. This guarantees:
 
-Example usage in your project's tools/lint/linters.bzl:
-
-    load("@score_cpp_policies//clang_tidy:defs.bzl", "make_clang_tidy_aspect", "make_clang_tidy_test")
-
-    clang_tidy_aspect = make_clang_tidy_aspect(
-        binary = Label("@llvm_toolchain//:clang-tidy"),
-        configs = [Label("//:.clang-tidy")],
-    )
-
-    clang_tidy_test = make_clang_tidy_test(aspect = clang_tidy_aspect)
+  1. The S-CORE baseline .clang-tidy is always the first config applied.
+  2. SCORE-specific aspect defaults (lint_target_headers, angle_includes_are_system)
+     are pre-wired without requiring each consumer to rediscover them.
+  3. When aspect_rules_lint changes its API, only this file needs updating;
+     all consumers get the fix automatically on the next score_cpp_policies bump.
 """
 
 load("@aspect_rules_lint//lint:clang_tidy.bzl", "lint_clang_tidy_aspect")
 load("@aspect_rules_lint//lint:lint_test.bzl", "lint_test")
 
+_BASELINE_CONFIG = Label("@score_cpp_policies//clang_tidy:.clang-tidy")
+
 def make_clang_tidy_aspect(
         binary,
-        configs,
+        local_configs = None,
         lint_target_headers = True,
-        angle_includes_are_system = True,
-        verbose = False):
-    """Creates a clang-tidy lint aspect with S-CORE defaults.
+        angle_includes_are_system = True):
+    """Creates a clang-tidy aspect pre-wired with the S-CORE baseline config.
+
+    The S-CORE baseline is always prepended to the config list. local_configs
+    are applied on top and may only tighten checks or add module-specific
+    suppressions — they cannot remove the baseline.
 
     Args:
-        binary: Label of the clang-tidy binary.
-                Must be resolved in the calling .bzl file's repository context,
-                e.g. Label("@llvm_toolchain//:clang-tidy").
-        configs: List of Labels to .clang-tidy config files that clang-tidy needs
-                 as inputs, e.g. [Label("//:.clang-tidy")].
-        lint_target_headers: Whether to lint headers owned by analyzed targets (default: True).
-        angle_includes_are_system: Treat angle bracket includes as system headers (default: True).
-        verbose: Enable verbose clang-tidy output (default: False).
+        binary: Label of the clang-tidy binary. Typically
+                Label("@llvm_toolchain//:clang-tidy").
+        local_configs: Optional list of Labels for module-specific .clang-tidy
+                       overrides, applied AFTER the S-CORE baseline.
+        lint_target_headers: Whether to also analyze headers of each target.
+                             Default True. Set False to reduce CI time on very
+                             large build graphs.
+        angle_includes_are_system: Whether <...> includes are treated as system
+                                   headers (suppresses warnings from them).
+                                   Default True.
 
     Returns:
-        A clang-tidy aspect. Assign to a top-level variable in your .bzl file
-        so it can be referenced via --aspects= in .bazelrc.
+        A configured clang-tidy lint aspect.
     """
     return lint_clang_tidy_aspect(
         binary = binary,
-        configs = configs,
+        configs = [_BASELINE_CONFIG] + (local_configs or []),
         lint_target_headers = lint_target_headers,
         angle_includes_are_system = angle_includes_are_system,
-        verbose = verbose,
     )
 
-def make_clang_tidy_test(aspect):
-    """Creates a clang-tidy lint test rule for per-target testing.
-
-    Args:
-        aspect: The clang-tidy aspect returned by make_clang_tidy_aspect().
-
-    Returns:
-        A rule that can be instantiated in BUILD files to run clang-tidy
-        on individual cc_library / cc_binary / cc_test targets.
-
-    Example usage in a BUILD file:
-        load("//tools/lint:linters.bzl", "clang_tidy_test")
-        clang_tidy_test(name = "my_lib_tidy", srcs = [":my_lib"])
-    """
-    return lint_test(aspect = aspect)
+# Re-exported for single-import convenience: consumers only need one load().
+make_clang_tidy_test = lint_test

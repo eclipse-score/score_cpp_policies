@@ -27,8 +27,8 @@ cc_args(
 
 cc_feature(
     name = "debug_symbols",
-    feature_name = "debug_symbols",
     args = [":debug_symbols_args"],
+    feature_name = "debug_symbols",
     visibility = ["//visibility:public"],
 )
 
@@ -61,11 +61,11 @@ cc_args(
 
 cc_feature(
     name = "asan_ubsan_lsan",
-    feature_name = "score_asan_ubsan_lsan",
     args = [
         ":asan_ubsan_lsan_compile_args",
         ":asan_ubsan_lsan_link_args",
     ],
+    feature_name = "score_asan_ubsan_lsan",
     implies = ["debug_symbols"],
     mutually_exclusive = [":sanitizer"],
     visibility = ["//visibility:public"],
@@ -99,11 +99,11 @@ cc_args(
 
 cc_feature(
     name = "tsan",
-    feature_name = "score_tsan",
     args = [
         ":tsan_compile_args",
         ":tsan_link_args",
     ],
+    feature_name = "score_tsan",
     implies = ["debug_symbols"],
     mutually_exclusive = [":sanitizer"],
     visibility = ["//visibility:public"],
@@ -122,11 +122,11 @@ cc_args(
 
 cc_feature(
     name = "asan_ubsan_lsan_gcc",
-    feature_name = "score_asan_ubsan_lsan",
     args = [
         ":asan_ubsan_lsan_compile_args",
         ":asan_ubsan_lsan_link_args_gcc",
     ],
+    feature_name = "score_asan_ubsan_lsan",
     implies = ["debug_symbols"],
     mutually_exclusive = [":sanitizer"],
     visibility = ["//visibility:public"],
@@ -141,11 +141,11 @@ cc_args(
 
 cc_feature(
     name = "tsan_gcc",
-    feature_name = "score_tsan",
     args = [
         ":tsan_compile_args",
         ":tsan_link_args_gcc",
     ],
+    feature_name = "score_tsan",
     implies = ["debug_symbols"],
     mutually_exclusive = [":sanitizer"],
     visibility = ["//visibility:public"],

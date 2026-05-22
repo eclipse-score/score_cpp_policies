@@ -11,10 +11,8 @@
 # SPDX-License-Identifier: Apache-2.0
 # *******************************************************************************
 
-load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_test")
-
-# Required as input to the clang-tidy aspect (configs = [Label("//:.clang-tidy")]).
-exports_files([".clang-tidy"])
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
+load("//tools/lint:linters.bzl", "clang_tidy_test")
 
 # ==============================================================================
 # Positive tests - verify clean code passes with all sanitizers
@@ -36,26 +34,26 @@ cc_test(
 
 cc_binary(
     name = "asan_fail_test",
-    srcs = ["negative/asan_fail.cpp"],
     testonly = True,
+    srcs = ["negative/asan_fail.cpp"],
 )
 
 cc_binary(
     name = "lsan_fail_test",
-    srcs = ["negative/lsan_fail.cpp"],
     testonly = True,
+    srcs = ["negative/lsan_fail.cpp"],
 )
 
 cc_binary(
     name = "tsan_fail_test",
-    srcs = ["negative/tsan_fail.cpp"],
     testonly = True,
+    srcs = ["negative/tsan_fail.cpp"],
 )
 
 cc_binary(
     name = "ubsan_fail_test",
-    srcs = ["negative/ubsan_fail.cpp"],
     testonly = True,
+    srcs = ["negative/ubsan_fail.cpp"],
 )
 
 # ==============================================================================
@@ -106,3 +104,33 @@ sh_test(
     target_compatible_with = ["@score_cpp_policies//sanitizers/constraints:no_tsan"],
 )
 
+# ==============================================================================
+# Clang-tidy tests
+# ==============================================================================
+
+# A minimal clean library to verify the aspect fires and finds zero issues.
+# Run: bazel test --config=clang-tidy :clang_tidy_sample
+cc_library(
+    name = "clang_tidy_clean_lib",
+    srcs = [],
+)
+
+clang_tidy_test(
+    name = "clang_tidy_sample",
+    srcs = [":clang_tidy_clean_lib"],
+)
+
+# Reference binary containing an intentional bugprone-use-after-move violation.
+# Not built by default; used to manually verify the aspect detects this pattern:
+#   bazel test --config=clang-tidy :clang_tidy_violation_check
+cc_binary(
+    name = "clang_tidy_violation",
+    srcs = ["violations/clang_tidy_violation.cpp"],
+    tags = ["manual"],
+)
+
+clang_tidy_test(
+    name = "clang_tidy_violation_check",
+    srcs = [":clang_tidy_violation"],
+    tags = ["manual"],
+)

@@ -11,13 +11,13 @@
 # SPDX-License-Identifier: Apache-2.0
 # *******************************************************************************
 
-"""Clang-tidy aspect and test rule for the score_cpp_policies test workspace."""
+"""Clang-tidy aspect and test rule for the score_cpp_policies self-test workspace."""
 
 load("@score_cpp_policies//clang_tidy:defs.bzl", "make_clang_tidy_aspect", "make_clang_tidy_test")
 
 clang_tidy_aspect = make_clang_tidy_aspect(
     binary = Label("@llvm_toolchain//:clang-tidy"),
-    configs = [Label("//:.clang-tidy")],
+    # No local_configs: the self-test workspace uses only the S-CORE baseline.
 )
 
 clang_tidy_test = make_clang_tidy_test(aspect = clang_tidy_aspect)

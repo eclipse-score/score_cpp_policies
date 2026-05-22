@@ -14,6 +14,8 @@
 exports_files(
     [
         ".clang-tidy",
+        "clang_tidy.bazelrc",
+        "defs.bzl",
     ],
     visibility = ["//visibility:public"],
 )

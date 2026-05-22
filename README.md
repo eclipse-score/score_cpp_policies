@@ -1,8 +1,10 @@
 # score_cpp_policies
 
-Centralized C++ quality tool policies for Eclipse S-CORE, providing sanitizer configurations reusable across all S-CORE modules (logging, communication, baselibs, etc.).
+Centralized C++ quality tool policies for Eclipse S-CORE, providing sanitizer
+configurations and clang-tidy integration reusable across all S-CORE modules
+(logging, communication, baselibs, etc.).
 
-Planned: clang-tidy, clang-format, code coverage policies.
+Planned: clang-format, code coverage policies.
 
 ## What This Provides
 
@@ -11,6 +13,8 @@ Planned: clang-tidy, clang-format, code coverage policies.
 - **`sanitizers/sanitizers.bazelrc`** — canonical config that consumers import or copy
 - **Suppression files** — per-sanitizer suppression lists for known false positives (GoogleTest, etc.)
 - **Constraint system** — `target_compatible_with` settings for sanitizer-incompatible targets
+- **`clang_tidy/.clang-tidy`** — centralized default check set (conservative baseline, tailorable per module)
+- **`clang_tidy/clang_tidy.bazelrc`** — `--config=clang-tidy` bazelrc config consumers can import
 
 ## Available Sanitizer Configurations
 
@@ -27,7 +31,7 @@ Planned: clang-tidy, clang-format, code coverage policies.
 ### Add Dependency
 
 ```python
-bazel_dep(name = "score_cpp_policies", version = "0.0.0")
+bazel_dep(name = "score_cpp_policies")
 ```
 
 ### Configure Sanitizers
