@@ -106,7 +106,46 @@ Available constraints:
 | `no_ubsan` | Skip when UBSan is active |
 | `no_lsan` | Skip when LSan is active |
 | `no_tsan` | Skip when TSan is active |
-| `no_asan_ubsan_lsan` | Skip when any of ASan/UBSan/LSan is active (compatibility alias) |
+| `no_asan_ubsan_lsan` | Skip when **any** of ASan, UBSan, or LSan is active (see note below) |
+
+> **Note — `no_asan_ubsan_lsan` semantic:**  
+> In the previous single-flag API, `no_asan_ubsan_lsan` was satisfied only when the
+> combined `asan_ubsan_lsan` preset was active (i.e. all three flags simultaneously).
+> In the current per-flag API it is satisfied when **any one** of the three flags is
+> set, matching `any_asan_ubsan_lsan`:
+>
+> | Scenario | Old behaviour | New behaviour |
+> |---|---|---|
+> | Only `--//flags:asan=True` | Target **skipped** — combo not active, so `no_asan_ubsan_lsan` was always satisfied | Target **skipped** — `any_asan_ubsan_lsan` is satisfied |
+> | `--//flags:asan + :ubsan + :lsan` | Target **skipped** | Target **skipped** |
+> | No sanitizer | Target **built** | Target **built** |
+>
+> If you need the old "skip only when all three are active" behaviour, reference
+> `//sanitizers/flags:asan_ubsan_lsan` (the `match_all` group) directly in a
+> custom `config_setting`.
+
+---
+
+## Valid Sanitizer Combinations
+
+The following table shows which flag combinations are **supported**:
+
+| ASan | UBSan | LSan | TSan | Status | Preset |
+|:---:|:---:|:---:|:---:|---|---|
+| ✓ | | | | ✅ Supported | `--config=asan` |
+| | ✓ | | | ✅ Supported | `--config=ubsan` |
+| ✓ | | ✓ | | ✅ Supported | `--config=asan` + `--config=lsan` |
+| ✓ | ✓ | ✓ | | ✅ Supported | `--config=asan_ubsan_lsan` (**recommended**) |
+| | | | ✓ | ✅ Supported | `--config=tsan` |
+| | ✓ | | ✓ | ✅ Supported | `--config=tsan_ubsan` |
+| ✓ | | | ✓ | ❌ **Invalid** | ASan+TSan: incompatible runtime libraries |
+| | | ✓ | ✓ | ❌ **Invalid** | LSan+TSan: TSan has built-in leak detection |
+
+Invalid combinations are caught at **build time** by
+`@score_cpp_policies//sanitizers/flags:sanitizer_combination_check` (the CI
+test suite depends on this target automatically via `tests/BUILD.bazel`).
+
+
 | `only_asan` | Only run when ASan is active |
 | `only_ubsan` | Only run when UBSan is active |
 | `only_lsan` | Only run when LSan is active |

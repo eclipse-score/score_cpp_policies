@@ -68,12 +68,7 @@ cc_args(
     actions = ["@rules_cc//cc/toolchains/actions:link_actions"],
     args = [
         "-fsanitize=undefined",
-        # -fsanitize-link-c++-runtime is required for UBSan when using Clang:
-        # UBSan's runtime library (libclang_rt.ubsan_cxx) contains C++ ABI helpers
-        # that are not automatically linked by -fsanitize=undefined alone when the
-        # toolchain's C++ runtime is not already on the link line. Omitting it causes
-        # undefined references to __ubsan_handle_* symbols at link time on some targets.
-        # GCC does not support this flag; see sanitizers/README.md for GCC usage.
+        # Clang-only: links the UBSan C++ runtime; not supported by GCC (see sanitizers/README.md).
         "-fsanitize-link-c++-runtime",
     ],
     visibility = ["//visibility:public"],

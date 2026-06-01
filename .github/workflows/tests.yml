@@ -41,6 +41,8 @@ jobs:
             description: "LeakSanitizer"
           - config: tsan
             description: "ThreadSanitizer"
+          - config: tsan_ubsan
+            description: "TSan + UBSan"
     
     steps:
       - name: Checkout

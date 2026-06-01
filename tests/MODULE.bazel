@@ -22,8 +22,7 @@ local_path_override(
     path = "..",
 )
 
-# LLVM toolchain for clang-tidy (provides @llvm_toolchain//:clang-tidy).
-bazel_dep(name = "toolchains_llvm", version = "1.7.0")
+# LLVM toolchain for clang-tidy (provides @llvm_toolchain//:clang-tidy) and sanitizers.
 
 llvm = use_extension(
     "@toolchains_llvm//toolchain/extensions:llvm.bzl",

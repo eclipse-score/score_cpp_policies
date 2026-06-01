@@ -27,6 +27,21 @@ Planned: clang-format, code coverage policies.
 | `--config=asan_ubsan_lsan` | ASan + UBSan + LSan | **Recommended default for CI** |
 | `--config=tsan_ubsan` | TSan + UBSan | Threading + undefined behavior |
 
+## Sanitizer Combination Compatibility
+
+| Combination | Valid? | Notes |
+|---|---|---|
+| ASan + UBSan | ✅ Yes | Standard — included in `--config=asan_ubsan_lsan` |
+| ASan + LSan | ✅ Yes | Included in `--config=asan_ubsan_lsan` |
+| TSan + UBSan | ✅ Yes | Use `--config=tsan_ubsan` |
+| ASan + TSan | ❌ No | Incompatible runtime libraries (`libasan` vs `libtsan`) |
+| LSan + TSan | ❌ No | TSan has built-in leak detection; enabling both causes runtime conflicts |
+
+Invalid combinations are enforced at the **compiler level** — Clang emits an explicit error (e.g.
+`error: invalid argument '-fsanitize=address' combined with '-fsanitize=thread'`).
+The `//sanitizers/flags:sanitizer_combination_check` target additionally catches these at Bazel
+build time when included in the build graph (the CI test suite depends on it automatically).
+
 ## Usage
 
 ### Add Dependency

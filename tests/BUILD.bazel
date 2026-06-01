@@ -14,6 +14,15 @@
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 load("//tools/lint:linters.bzl", "clang_tidy_test")
 
+# Enforce sanitizer combination constraints at build time (e.g. ASan+TSan is invalid).
+
+genrule(
+    name = "validate_sanitizer_combination",
+    srcs = ["@score_cpp_policies//sanitizers/flags:sanitizer_combination_check"],
+    outs = ["_validate_sanitizer_combination.stamp"],
+    cmd = "cp $< $@",
+)
+
 # ==============================================================================
 # Positive tests - verify clean code passes with all sanitizers
 # ==============================================================================
