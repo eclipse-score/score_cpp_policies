@@ -12,42 +12,53 @@
 # *******************************************************************************
 
 # ==============================================================================
-# Centralized Sanitizer Configurations for S-CORE C++ Modules
-# ==============================================================================
-#
-# Available configurations:
-#   --config=asan_ubsan_lsan  : AddressSanitizer + UndefinedBehaviorSanitizer + LeakSanitizer (Combined)
-#   --config=asan             : AddressSanitizer only
-#   --config=lsan             : LeakSanitizer only
-#   --config=tsan             : ThreadSanitizer (cannot be combined with ASan)
-#   --config=ubsan            : UndefinedBehaviorSanitizer only
+# Debug symbols — used by all sanitizer configs below
 # ==============================================================================
 
-# -g1: Minimal debug info (function names + line numbers) for sanitizer stack traces
-# GCC and Clang compatible. Note: Clang's -gline-tables-only provides column info but is not GCC-compatible.
 test:with_debug_symbols --features=debug_symbols
-# Disable stripping so debug symbols are preserved at the final link stage
 build:with_debug_symbols --strip=never
 
-# AddressSanitizer + UndefinedBehaviorSanitizer + LeakSanitizer (Combined)
-build:asan_ubsan_lsan --features=score_asan_ubsan_lsan
-build:asan_ubsan_lsan --platform_suffix=asan_ubsan_lsan
-build:asan_ubsan_lsan --config=with_debug_symbols
-build:asan_ubsan_lsan --@score_cpp_policies//sanitizers/flags:sanitizer=asan_ubsan_lsan
-test:asan_ubsan_lsan --run_under=@score_cpp_policies//sanitizers:wrapper
+# ==============================================================================
+# Per-sanitizer configs (primary API — each activates exactly one sanitizer)
+# ==============================================================================
 
-# AddressSanitizer only
-build:asan  --config=asan_ubsan_lsan
+build:asan --features=score_asan
+build:asan --@score_cpp_policies//sanitizers/flags:asan=True
+build:asan --platform_suffix=asan
+build:asan --config=with_debug_symbols
+test:asan  --run_under=@score_cpp_policies//sanitizers:wrapper
 
-# UndefinedBehaviorSanitizer only
-build:ubsan --config=asan_ubsan_lsan
+build:ubsan --features=score_ubsan
+build:ubsan --@score_cpp_policies//sanitizers/flags:ubsan=True
+build:ubsan --platform_suffix=ubsan
+build:ubsan --config=with_debug_symbols
+test:ubsan  --run_under=@score_cpp_policies//sanitizers:wrapper
 
-# LeakSanitizer only
-build:lsan  --config=asan_ubsan_lsan
+build:lsan --features=score_lsan
+build:lsan --@score_cpp_policies//sanitizers/flags:lsan=True
+build:lsan --platform_suffix=lsan
+build:lsan --config=with_debug_symbols
+test:lsan  --run_under=@score_cpp_policies//sanitizers:wrapper
 
-# ThreadSanitizer (cannot be combined with ASan/LSan)
 build:tsan --features=score_tsan
+build:tsan --@score_cpp_policies//sanitizers/flags:tsan=True
 build:tsan --platform_suffix=tsan
 build:tsan --config=with_debug_symbols
-build:tsan --@score_cpp_policies//sanitizers/flags:sanitizer=tsan
-test:tsan --run_under=@score_cpp_policies//sanitizers:wrapper
+test:tsan  --run_under=@score_cpp_policies//sanitizers:wrapper
+
+# ==============================================================================
+# Composite configs — convenience aliases for common combinations
+# ==============================================================================
+# Note on --platform_suffix ordering: each --config=asan/ubsan/lsan sets its own
+# --platform_suffix. The final --platform_suffix below overrides all of them to a
+# single canonical suffix. Bazel applies the last value of a repeatable flag, so
+# this override is intentional and stable.
+
+build:asan_ubsan_lsan --config=asan
+build:asan_ubsan_lsan --config=ubsan
+build:asan_ubsan_lsan --config=lsan
+build:asan_ubsan_lsan --platform_suffix=asan_ubsan_lsan
+
+build:tsan_ubsan --config=tsan
+build:tsan_ubsan --config=ubsan
+build:tsan_ubsan --platform_suffix=tsan_ubsan

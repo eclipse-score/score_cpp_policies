@@ -20,11 +20,27 @@ Planned: clang-format, code coverage policies.
 
 | Config | Sanitizers | Notes |
 |--------|-----------|-------|
-| `--config=asan_ubsan_lsan` | ASan + UBSan + LSan | **Recommended** — catches memory errors, UB, and leaks |
-| `--config=asan` | AddressSanitizer | Alias for `asan_ubsan_lsan` |
-| `--config=ubsan` | UndefinedBehaviorSanitizer | Alias for `asan_ubsan_lsan` |
-| `--config=lsan` | LeakSanitizer | Alias for `asan_ubsan_lsan` |
-| `--config=tsan` | ThreadSanitizer | Cannot be combined with ASan |
+| `--config=asan` | AddressSanitizer | Memory errors, buffer overflows |
+| `--config=ubsan` | UndefinedBehaviorSanitizer | Integer overflow, null deref |
+| `--config=lsan` | LeakSanitizer | Memory leaks |
+| `--config=tsan` | ThreadSanitizer | Data races, deadlocks — cannot combine with ASan/LSan |
+| `--config=asan_ubsan_lsan` | ASan + UBSan + LSan | **Recommended default for CI** |
+| `--config=tsan_ubsan` | TSan + UBSan | Threading + undefined behavior |
+
+## Sanitizer Combination Compatibility
+
+| Combination | Valid? | Notes |
+|---|---|---|
+| ASan + UBSan | ✅ Yes | Standard — included in `--config=asan_ubsan_lsan` |
+| ASan + LSan | ✅ Yes | Included in `--config=asan_ubsan_lsan` |
+| TSan + UBSan | ✅ Yes | Use `--config=tsan_ubsan` |
+| ASan + TSan | ❌ No | Incompatible runtime libraries (`libasan` vs `libtsan`) |
+| LSan + TSan | ❌ No | TSan has built-in leak detection; enabling both causes runtime conflicts |
+
+Invalid combinations are enforced at the **compiler level** — Clang emits an explicit error (e.g.
+`error: invalid argument '-fsanitize=address' combined with '-fsanitize=thread'`).
+The `//sanitizers/flags:sanitizer_combination_check` target additionally catches these at Bazel
+build time when included in the build graph (the CI test suite depends on it automatically).
 
 ## Usage
 
@@ -109,6 +125,31 @@ bazel test --config=asan_ubsan_lsan //...
 bazel test --config=tsan //...
 bazel test --config=clang-tidy //...
 ```
+
+## Migration from v0.x
+
+The `--@score_cpp_policies//sanitizers/flags:sanitizer=<value>` string flag has been removed.
+Replace any direct flag usage with the equivalent `--config=` alias:
+
+| Old | New |
+|-----|-----|
+| `--@score_cpp_policies//sanitizers/flags:sanitizer=asan_ubsan_lsan` | `--config=asan_ubsan_lsan` |
+| `--@score_cpp_policies//sanitizers/flags:sanitizer=tsan` | `--config=tsan` |
+
+`--config=asan`, `--config=ubsan`, and `--config=lsan` now activate exactly their named sanitizer rather than the combined `asan_ubsan_lsan` mode.
+
+### GCC-specific feature variants removed
+
+The `asan_ubsan_lsan_gcc` and `tsan_gcc` `cc_feature` targets (which omitted `-fsanitize-link-c++-runtime`)
+have been removed. The new per-sanitizer features (`score_asan`, `score_ubsan`, etc.) work with both Clang
+and GCC toolchains. If you were registering GCC-specific features explicitly in your toolchain, replace them
+with the new single features (e.g. `@score_cpp_policies//sanitizers/features:asan`).
+
+### `no_asan_ubsan_lsan` constraint retained as compatibility alias
+
+`//sanitizers/constraints:no_asan_ubsan_lsan` is kept as a backwards-compatible alias. It resolves to
+`incompatible` if **any** of ASan, UBSan, or LSan is active. Prefer the more granular `no_asan`, `no_ubsan`,
+or `no_lsan` constraints for new targets.
 
 ## Contributing
 

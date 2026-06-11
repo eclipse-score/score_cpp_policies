@@ -18,5 +18,10 @@ import %workspace%/../clang_tidy/clang_tidy.bazelrc
 common --registry=https://raw.githubusercontent.com/eclipse-score/bazel_registry/main/
 common --registry=https://bcr.bazel.build
 
+# Use LLVM toolchain for sanitizer configs (same as consuming modules)
+build:asan          --extra_toolchains=@llvm_toolchain//:cc-toolchain-x86_64-linux
+build:ubsan         --extra_toolchains=@llvm_toolchain//:cc-toolchain-x86_64-linux
+build:lsan          --extra_toolchains=@llvm_toolchain//:cc-toolchain-x86_64-linux
+build:tsan          --extra_toolchains=@llvm_toolchain//:cc-toolchain-x86_64-linux
 build:asan_ubsan_lsan --extra_toolchains=@llvm_toolchain//:cc-toolchain-x86_64-linux
-build:tsan --extra_toolchains=@llvm_toolchain//:cc-toolchain-x86_64-linux
+build:tsan_ubsan    --extra_toolchains=@llvm_toolchain//:cc-toolchain-x86_64-linux

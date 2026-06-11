@@ -30,9 +30,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        config:
-          - asan_ubsan_lsan
-          - tsan
+        include:
+          - config: asan_ubsan_lsan
+            description: "ASan + UBSan + LSan"
+          - config: asan
+            description: "AddressSanitizer"
+          - config: ubsan
+            description: "UndefinedBehaviorSanitizer"
+          - config: lsan
+            description: "LeakSanitizer"
+          - config: tsan
+            description: "ThreadSanitizer"
+          - config: tsan_ubsan
+            description: "TSan + UBSan"
     
     steps:
       - name: Checkout

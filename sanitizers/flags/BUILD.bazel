@@ -12,42 +12,164 @@
 # *******************************************************************************
 
 load("@bazel_skylib//lib:selects.bzl", "selects")
-load("@bazel_skylib//rules:common_settings.bzl", "string_flag")
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "string_flag")
 
-string_flag(
-    name = "sanitizer",
-    build_setting_default = "none",
-    values = [
-        "none",
-        "asan_ubsan_lsan",
-        "tsan",
-    ],
+bool_flag(
+    name = "asan",
+    build_setting_default = False,
     visibility = ["//visibility:public"],
 )
 
 config_setting(
-    name = "none",
-    flag_values = {":sanitizer": "none"},
+    name = "asan_on",
+    flag_values = {":asan": "True"},
+    visibility = ["//visibility:public"],
+)
+
+bool_flag(
+    name = "ubsan",
+    build_setting_default = False,
     visibility = ["//visibility:public"],
 )
 
 config_setting(
-    name = "asan_ubsan_lsan",
-    flag_values = {":sanitizer": "asan_ubsan_lsan"},
+    name = "ubsan_on",
+    flag_values = {":ubsan": "True"},
+    visibility = ["//visibility:public"],
+)
+
+bool_flag(
+    name = "lsan",
+    build_setting_default = False,
     visibility = ["//visibility:public"],
 )
 
 config_setting(
+    name = "lsan_on",
+    flag_values = {":lsan": "True"},
+    visibility = ["//visibility:public"],
+)
+
+bool_flag(
     name = "tsan",
-    flag_values = {":sanitizer": "tsan"},
+    build_setting_default = False,
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "tsan_on",
+    flag_values = {":tsan": "True"},
     visibility = ["//visibility:public"],
 )
 
 selects.config_setting_group(
     name = "any_sanitizer",
     match_any = [
-        ":asan_ubsan_lsan",
-        ":tsan",
+        ":asan_on",
+        ":ubsan_on",
+        ":lsan_on",
+        ":tsan_on",
     ],
+    visibility = ["//visibility:public"],
+)
+
+selects.config_setting_group(
+    name = "any_asan_ubsan_lsan",
+    match_any = [
+        ":asan_on",
+        ":ubsan_on",
+        ":lsan_on",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+selects.config_setting_group(
+    name = "asan_ubsan_lsan",
+    match_all = [
+        ":asan_on",
+        ":ubsan_on",
+        ":lsan_on",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+# Invalid-combination guards (ASan+TSan, LSan+TSan — incompatible runtimes).
+
+selects.config_setting_group(
+    name = "_invalid_asan_tsan",
+    match_all = [":asan_on", ":tsan_on"],
+)
+
+selects.config_setting_group(
+    name = "_invalid_lsan_tsan",
+    match_all = [":lsan_on", ":tsan_on"],
+)
+
+genrule(
+    name = "sanitizer_combination_check",
+    srcs = [],
+    outs = ["_sanitizer_combination_check.txt"],
+    cmd = select({
+        ":_invalid_asan_tsan": (
+            "echo 'ERROR: --//sanitizers/flags:asan and --//sanitizers/flags:tsan cannot be" +
+            " used together. They require incompatible runtime libraries (libasan vs libtsan)." +
+            " Use --config=asan_ubsan_lsan for address/leak/UB checking, or --config=tsan_ubsan" +
+            " for thread/UB checking.' >&2; exit 1"
+        ),
+        ":_invalid_lsan_tsan": (
+            "echo 'ERROR: --//sanitizers/flags:lsan and --//sanitizers/flags:tsan cannot be" +
+            " used together. TSan includes its own leak detection. Use --config=tsan_ubsan" +
+            " instead.' >&2; exit 1"
+        ),
+        "//conditions:default": "echo 'sanitizer combination valid' > $@",
+    }),
+    visibility = ["//visibility:public"],
+)
+
+# ==============================================================================
+# Deprecated shim — the old single string_flag :sanitizer has been removed.
+# This target exists solely to produce an actionable error message if a
+# workspace still passes --//sanitizers/flags:sanitizer=<value>.
+# Migration: replace with individual bool_flags; see sanitizers/README.md.
+# ==============================================================================
+
+
+string_flag(
+    name = "sanitizer",
+    build_setting_default = "none",
+    # Keep the old recognised values so Bazel does not reject the flag on the
+    # command line; the genrule below catches non-default usage and explains
+    # the required migration.
+    values = [
+        "none",
+        "asan_ubsan_lsan",
+        "tsan",
+    ],
+    deprecation = (
+        "//sanitizers/flags:sanitizer is removed. " +
+        "Use individual bool_flags (--//sanitizers/flags:asan, :ubsan, :lsan, :tsan) " +
+        "or the --config= shortcuts in sanitizers.bazelrc. " +
+        "See sanitizers/README.md § Migration."
+    ),
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "_sanitizer_flag_default",
+    flag_values = {":sanitizer": "none"},
+)
+
+genrule(
+    name = "sanitizer_deprecated_check",
+    srcs = [],
+    outs = ["_sanitizer_deprecated_check.txt"],
+    cmd = select({
+        ":_sanitizer_flag_default": "echo 'ok' > $@",
+        "//conditions:default": (
+            "echo 'ERROR: --//sanitizers/flags:sanitizer is removed." +
+            " Migrate to individual bool_flags: --//sanitizers/flags:asan=True etc." +
+            " See sanitizers/README.md for the migration guide.' >&2; exit 1"
+        ),
+    }),
     visibility = ["//visibility:public"],
 )

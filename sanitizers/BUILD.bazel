@@ -18,52 +18,59 @@ exports_files(
     visibility = ["//visibility:public"],
 )
 
-filegroup(
-    name = "env_template",
-    srcs = select({
-        "//sanitizers/flags:tsan": ["templates/tsan.env.template"],
-        "//sanitizers/flags:asan_ubsan_lsan": ["templates/asan_ubsan_lsan.env.template"],
-    }),
-    target_compatible_with = ["//sanitizers/constraints:any_sanitizer"],
-)
+_SANITIZERS = {
+    "asan": "templates/asan.env.template",
+    "ubsan": "templates/ubsan.env.template",
+    "lsan": "templates/lsan.env.template",
+    "tsan": "templates/tsan.env.template",
+}
+
+_ROOTS = {
+    "absolute": "/",
+    "relative": "./",
+}
 
 [
     expand_template(
-        name = name + "_env",
-        out = name + "_sanitizer.env",
-        substitutions = {"%ROOT%": root},
+        name = sanitizer + "_" + root_name + "_env",
+        out = sanitizer + "_" + root_name + "_sanitizer.env",
+        substitutions = {"%ROOT%": root_path},
         target_compatible_with = ["//sanitizers/constraints:any_sanitizer"],
-        template = ":env_template",
+        template = template,
         visibility = ["//visibility:public"],
     )
-    for name, root in [
-        ("absolute", "/"),
-        ("relative", "./"),
-    ]
+    for sanitizer, template in _SANITIZERS.items()
+    for root_name, root_path in _ROOTS.items()
 ]
-
-filegroup(
-    name = "suppressions",
-    srcs = select({
-        "//sanitizers/flags:tsan": ["suppressions/tsan.supp"],
-        "//sanitizers/flags:asan_ubsan_lsan": [
-            "suppressions/asan.supp",
-            "suppressions/lsan.supp",
-            "suppressions/ubsan.supp",
-        ],
-        "//conditions:default": [],
-    }),
-    target_compatible_with = ["//sanitizers/constraints:any_sanitizer"],
-    visibility = ["//visibility:public"],
-)
 
 sh_binary(
     name = "wrapper",
     srcs = ["wrapper.sh"],
-    data = [
-        ":relative_env",
-        ":suppressions",
-    ],
+    data = select({
+        "//sanitizers/flags:asan_on": [
+            "suppressions/asan.supp",
+            ":asan_relative_env",
+        ],
+        "//conditions:default": [],
+    }) + select({
+        "//sanitizers/flags:ubsan_on": [
+            "suppressions/ubsan.supp",
+            ":ubsan_relative_env",
+        ],
+        "//conditions:default": [],
+    }) + select({
+        "//sanitizers/flags:lsan_on": [
+            "suppressions/lsan.supp",
+            ":lsan_relative_env",
+        ],
+        "//conditions:default": [],
+    }) + select({
+        "//sanitizers/flags:tsan_on": [
+            "suppressions/tsan.supp",
+            ":tsan_relative_env",
+        ],
+        "//conditions:default": [],
+    }),
     target_compatible_with = ["//sanitizers/constraints:any_sanitizer"],
     visibility = ["//visibility:public"],
 )

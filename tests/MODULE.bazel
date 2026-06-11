@@ -15,14 +15,14 @@ module(name = "score_cpp_policies_tests")
 
 bazel_dep(name = "googletest", version = "1.17.0.bcr.2")
 bazel_dep(name = "rules_cc", version = "0.2.17")
+bazel_dep(name = "toolchains_llvm", version = "1.7.0")
 bazel_dep(name = "score_cpp_policies")
 local_path_override(
     module_name = "score_cpp_policies",
     path = "..",
 )
 
-# LLVM toolchain for clang-tidy (provides @llvm_toolchain//:clang-tidy).
-bazel_dep(name = "toolchains_llvm", version = "1.7.0")
+# LLVM toolchain for clang-tidy (provides @llvm_toolchain//:clang-tidy) and sanitizers.
 
 llvm = use_extension(
     "@toolchains_llvm//toolchain/extensions:llvm.bzl",
@@ -31,7 +31,9 @@ llvm = use_extension(
 llvm.toolchain(
     extra_known_features = [
         "@score_cpp_policies//sanitizers/features:debug_symbols",
-        "@score_cpp_policies//sanitizers/features:asan_ubsan_lsan",
+        "@score_cpp_policies//sanitizers/features:asan",
+        "@score_cpp_policies//sanitizers/features:ubsan",
+        "@score_cpp_policies//sanitizers/features:lsan",
         "@score_cpp_policies//sanitizers/features:tsan",
     ],
     llvm_version = "19.1.7",
