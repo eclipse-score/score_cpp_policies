@@ -66,14 +66,13 @@ score_instrumented_sources_manifest(
     targets = [
         ":coverable",
         ":uncovered",
-        ":coverable_test",
     ],
 )
 
 py_test(
     name = "reporter_test",
     srcs = ["reporter_test.py"],
-    deps = ["@score_cpp_policies//coverage:reporter"],
+    deps = ["@score_cpp_policies//coverage:reporter_lib"],
 )
 
 score_coverage_reporter(

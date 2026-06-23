@@ -11,7 +11,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # *******************************************************************************
 
-load("@rules_python//python:defs.bzl", "py_binary")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 
 package(default_visibility = ["//visibility:public"])
@@ -46,6 +46,13 @@ py_binary(
 # letting each consumer pick its own llvm_toolchain repository name and
 # version (see score_coverage_reporter in coverage/defs.bzl).
 # ---------------------------------------------------------------------------
+py_library(
+    name = "reporter_lib",
+    srcs = ["reporter.py"],
+    imports = [".."],
+    deps = ["@rules_python//python/runfiles"],
+)
+
 py_binary(
     name = "reporter",
     srcs = ["reporter.py"],
