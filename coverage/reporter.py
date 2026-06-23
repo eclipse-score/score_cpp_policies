@@ -415,7 +415,7 @@ _NON_EXECUTABLE_RE = re.compile(
     r"[{}]"                        # lone braces
     r"|//.*"                       # line comments
     r"|/\*.*"                      # block comment open
-    r"|\*.*"                       # block comment continuation / close
+    r"|\*(?:[/\s].*)?"              # block comment continuation (* text) / close (*/), lone *
     r"|\*/.*"                      # block comment close
     r"|#\s*(?:include|define|undef|if|ifdef|ifndef|elif|else|endif|pragma|error|warning)\b.*"
     r"|namespace\b[^{;]*[{]?\s*"   # namespace declarations
