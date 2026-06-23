@@ -2,6 +2,10 @@
 bazel-*
 .bazel-*
 
+# Generated coverage reports (output from `bazel run @score_cpp_policies//coverage:generate_coverage_html`)
+cpp_coverage/
+*/cpp_coverage/
+
 # IDE files
 .vscode/
 .idea/

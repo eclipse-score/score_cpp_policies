@@ -15,6 +15,8 @@ import %workspace%/../sanitizers/sanitizers.bazelrc
 
 import %workspace%/../clang_tidy/clang_tidy.bazelrc
 
+import %workspace%/../coverage/coverage.bazelrc
+
 common --registry=https://raw.githubusercontent.com/eclipse-score/bazel_registry/main/
 common --registry=https://bcr.bazel.build
 
@@ -25,3 +27,11 @@ build:lsan          --extra_toolchains=@llvm_toolchain//:cc-toolchain-x86_64-lin
 build:tsan          --extra_toolchains=@llvm_toolchain//:cc-toolchain-x86_64-linux
 build:asan_ubsan_lsan --extra_toolchains=@llvm_toolchain//:cc-toolchain-x86_64-linux
 build:tsan_ubsan    --extra_toolchains=@llvm_toolchain//:cc-toolchain-x86_64-linux
+
+# ---------------------------------------------------------------------------
+# Coverage smoke-test wiring (consumer-side settings on top of the imported
+# generic coverage.bazelrc).
+# ---------------------------------------------------------------------------
+coverage --extra_toolchains=@llvm_toolchain//:cc-toolchain-x86_64-linux
+coverage --instrumentation_filter="^//coverage[/:]"
+coverage --coverage_report_generator=//coverage:reporter_wrapper

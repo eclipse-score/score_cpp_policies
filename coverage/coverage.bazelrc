@@ -1,0 +1,88 @@
+# *******************************************************************************
+# Copyright (c) 2026 Contributors to the Eclipse Foundation
+#
+# See the NOTICE file(s) distributed with this work for additional
+# information regarding copyright ownership.
+#
+# This program and the accompanying materials are made available under the
+# terms of the Apache License Version 2.0 which is available at
+# https://www.apache.org/licenses/LICENSE-2.0
+#
+# SPDX-License-Identifier: Apache-2.0
+# *******************************************************************************
+#
+# Generic coverage configuration shipped by @score_cpp_policies.
+#
+# Consumers import this file from their own .bazelrc with:
+#
+#     import %workspace%/path/to/coverage.bazelrc
+#
+# This file deliberately does NOT set the following — they are consumer-
+# specific and must be configured in the consumer's .bazelrc on top of this
+# file:
+#
+#   coverage --instrumentation_filter="^//<your_top_level_package>[/:]"
+#   coverage --coverage_report_generator=//<your_dir>:reporter_wrapper
+#
+# The reporter_wrapper target must be created with the
+# `score_coverage_reporter` macro from @score_cpp_policies//coverage:defs.bzl
+# so that consumer-specific filter regex extensions and the consumer
+# workspace root are wired in correctly.
+#
+# Prerequisites the consumer's MODULE.bazel must satisfy:
+#   - bazel_dep(name = "score_cpp_policies", version = "...")
+#   - register an llvm toolchain via the toolchains_llvm extension and pass
+#     the resulting `:llvm-cov` and `:llvm-profdata` labels to the
+#     `score_coverage_reporter` macro (the repository name is freely chosen
+#     by the consumer)
+
+# ---------------------------------------------------------------------------
+# Bazel coverage instrumentation flags.
+# ---------------------------------------------------------------------------
+# `experimental_use_llvm_covmap` switches Bazel to source-based coverage
+# (instr profiles) instead of gcov-style notes.
+coverage --experimental_use_llvm_covmap
+coverage --experimental_generate_llvm_lcov
+coverage --combined_report=lcov
+coverage --experimental_fetch_all_coverage_outputs
+
+# ---------------------------------------------------------------------------
+# Custom coverage report generators provided by @score_cpp_policies.
+# The merger is consumer-agnostic and is used as-is.
+# The reporter_wrapper MUST be defined per-consumer via score_coverage_reporter
+# and pointed to with `--coverage_report_generator` in the consumer's .bazelrc.
+# ---------------------------------------------------------------------------
+coverage --coverage_output_generator=@score_cpp_policies//coverage:merger
+
+# ---------------------------------------------------------------------------
+# Test-time environment.
+# ---------------------------------------------------------------------------
+# Bazel's default collect_cc_coverage.sh would call gcov; we use llvm-cov, so
+# stub out gcov and suppress the auto LCOV conversion (raw profraw is what
+# the merger consumes).
+coverage --test_env=GENERATE_LLVM_LCOV=0
+coverage --test_env=COVERAGE_GCOV_PATH=/usr/bin/true
+# Required so that LLVM writes counters incrementally; without it abnormal
+# termination paths report as uncovered even when reached.
+coverage --test_env=LLVM_PROFILE_CONTINUOUS_MODE=1
+
+# ---------------------------------------------------------------------------
+# Compile flags required for accurate llvm-cov data.
+# ---------------------------------------------------------------------------
+# -O0: no optimization, otherwise line/branch mapping becomes unreliable.
+coverage --cxxopt=-O0
+# Required for LLVM continuous mode (paired with LLVM_PROFILE_CONTINUOUS_MODE).
+coverage --cxxopt=-mllvm
+coverage --cxxopt=-runtime-counter-relocation
+
+# ---------------------------------------------------------------------------
+# Disable dynamic libraries — they create per-test .so files whose
+# instrumentation can clash with the production .so files. The first object
+# loaded wins, leading to flaky / order-dependent coverage gaps.
+# ---------------------------------------------------------------------------
+coverage --dynamic_mode=off
+
+# ---------------------------------------------------------------------------
+# Always rerun tests in coverage mode (cached results carry no profraw).
+# ---------------------------------------------------------------------------
+coverage --nocache_test_results

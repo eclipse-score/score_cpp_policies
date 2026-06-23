@@ -14,6 +14,10 @@
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 load("//tools/lint:linters.bzl", "clang_tidy_test")
 
+# Required by @score_cpp_policies//coverage:defs.bzl :: score_coverage_reporter
+# so the macro can rlocation-resolve the consumer workspace root at runtime.
+exports_files(["MODULE.bazel"])
+
 # Enforce sanitizer combination constraints at build time (e.g. ASan+TSan is invalid).
 
 genrule(

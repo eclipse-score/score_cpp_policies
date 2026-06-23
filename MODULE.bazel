@@ -17,3 +17,26 @@ bazel_dep(name = "bazel_skylib", version = "1.8.2")
 bazel_dep(name = "platforms", version = "0.0.10")
 bazel_dep(name = "rules_cc", version = "0.2.17")
 bazel_dep(name = "aspect_rules_lint", version = "2.5.0")
+
+# ---------------------------------------------------------------------------
+# Coverage tooling (//coverage/...). Hosts the merger/reporter/justify/
+# effective_coverage Python binaries and the shell driver. Consumers do not
+# need rules_python themselves to use //coverage:reporter — it is wired in
+# here once for the whole policies module.
+# ---------------------------------------------------------------------------
+bazel_dep(name = "rules_python", version = "1.8.5")
+bazel_dep(name = "rules_shell", version = "0.3.0")
+
+python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+python.toolchain(
+    python_version = "3.12",
+    is_default = True,
+)
+
+pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
+pip.parse(
+    hub_name = "score_cpp_policies_pip",
+    python_version = "3.12",
+    requirements_lock = "//coverage:requirements_lock.txt",
+)
+use_repo(pip, "score_cpp_policies_pip")

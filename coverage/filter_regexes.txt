@@ -1,0 +1,52 @@
+# Coverage filter regexes (one per line; blank lines and lines starting
+# with `#` are ignored).
+#
+# These regexes are passed to llvm-cov as --ignore-filename-regex, matching
+# against the full source path as seen by llvm-cov.
+#
+# This file is the baseline shipped with @score_cpp_policies. Consumers can
+# extend it with their own module-specific regexes through the
+# score_coverage_reporter(extra_regex_files = [...]) macro in coverage/defs.bzl.
+#
+# NOTE: --experimental_use_llvm_covmap causes Bazel to instrument ALL targets
+# regardless of --instrumentation_filter. Therefore, source filtering MUST
+# happen here at the report level.
+
+# ---------------------------------------------------------------------------
+# External dependencies
+# ---------------------------------------------------------------------------
+external/.*
+
+# ---------------------------------------------------------------------------
+# Test files and test directories
+# ---------------------------------------------------------------------------
+.*_test\.(cpp|cc|h|hpp)$
+.*_tests\.(cpp|cc|h|hpp)$
+.*/test/.*
+.*/test_support/.*
+.*/test_doubles/.*
+.*_fixture.*\.(cpp|cc|h|hpp)$
+.*_fixtures.*\.(cpp|cc|h|hpp)$
+
+# ---------------------------------------------------------------------------
+# Mock infrastructure
+# ---------------------------------------------------------------------------
+.*_mock.*\.(cpp|cc|h|hpp)$
+.*/mock/.*
+.*/mocks/.*
+.*/mocking/.*
+.*/mock_binding/.*
+
+# ---------------------------------------------------------------------------
+# Fakes / stubs
+# ---------------------------------------------------------------------------
+.*_fake\.(cpp|cc|h|hpp)$
+.*_fakes\.(cpp|cc|h|hpp)$
+.*_stub\.(cpp|cc|h|hpp)$
+.*_stubs\.(cpp|cc|h|hpp)$
+
+# ---------------------------------------------------------------------------
+# Performance benchmarks (not part of functional coverage)
+# ---------------------------------------------------------------------------
+.*/performance_benchmarks/.*
+.*/benchmarks/.*

@@ -1,0 +1,90 @@
+# *******************************************************************************
+# Copyright (c) 2026 Contributors to the Eclipse Foundation
+#
+# See the NOTICE file(s) distributed with this work for additional
+# information regarding copyright ownership.
+#
+# This program and the accompanying materials are made available under the
+# terms of the Apache License Version 2.0 which is available at
+# https://www.apache.org/licenses/LICENSE-2.0
+#
+# SPDX-License-Identifier: Apache-2.0
+# *******************************************************************************
+
+load("@rules_python//python:defs.bzl", "py_binary")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+
+package(default_visibility = ["//visibility:public"])
+
+# Files consumers may reference directly (e.g. .bazelrc imports, custom macros).
+exports_files([
+    "coverage.bazelrc",
+    "filter_regexes.txt",
+    "generate_coverage_html.sh",
+])
+
+# ---------------------------------------------------------------------------
+# Per-test coverage merger.
+# Bazel calls this as --coverage_output_generator once per test; it takes
+# profraw files + the source-file manifest, merges them with llvm-profdata
+# and packages everything (profdata + object-file list) into a zip that the
+# reporter later aggregates.
+# ---------------------------------------------------------------------------
+py_binary(
+    name = "merger",
+    srcs = ["merger.py"],
+)
+
+# ---------------------------------------------------------------------------
+# Final coverage reporter (HTML / LCOV / text).
+# Invoked indirectly via the per-consumer wrapper produced by
+# `score_coverage_reporter` (see defs.bzl). Reads per-test zips, merges all
+# profdata, then calls llvm-cov to render the combined report.
+#
+# Note: this target intentionally does NOT carry the llvm-cov / llvm-profdata
+# binaries in its `data` — the consumer-side wrapper supplies them by label,
+# letting each consumer pick its own llvm_toolchain repository name and
+# version (see score_coverage_reporter in coverage/defs.bzl).
+# ---------------------------------------------------------------------------
+py_binary(
+    name = "reporter",
+    srcs = ["reporter.py"],
+    deps = ["@rules_python//python/runfiles"],
+)
+
+# ---------------------------------------------------------------------------
+# Coverage justification processor.
+# Reads a YAML database of justifications + scans source for COV_JUSTIFIED
+# markers and emits a manifest of (file, line) -> justification.
+# ---------------------------------------------------------------------------
+py_binary(
+    name = "justify",
+    srcs = ["justify.py"],
+    deps = [
+        "@score_cpp_policies_pip//pyyaml",
+    ],
+)
+
+# ---------------------------------------------------------------------------
+# Effective coverage calculator + HTML post-processor.
+# Takes the llvm-cov HTML report and the resolved justification manifest;
+# rewrites the HTML to highlight justified lines and emits effective
+# coverage statistics.
+# ---------------------------------------------------------------------------
+py_binary(
+    name = "effective_coverage",
+    srcs = ["effective_coverage.py"],
+)
+
+# ---------------------------------------------------------------------------
+# Generic post-`bazel coverage` driver. Consumers invoke this via
+# `bazel run @score_cpp_policies//coverage:generate_coverage_html -- [flags]`.
+# ---------------------------------------------------------------------------
+sh_binary(
+    name = "generate_coverage_html",
+    srcs = ["generate_coverage_html.sh"],
+    data = [
+        ":justify",
+        ":effective_coverage",
+    ],
+)
