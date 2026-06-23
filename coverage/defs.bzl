@@ -49,11 +49,105 @@ load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 _BASELINE_REGEX = "@score_cpp_policies//coverage:filter_regexes.txt"
 _REPORTER = "@score_cpp_policies//coverage:reporter"
 
+# ---------------------------------------------------------------------------
+# Instrumented sources collection.
+#
+# llvm-cov only reports files whose object files were linked into one of the
+# tests it was asked to analyse. Source files that exist in the workspace but
+# are not linked into any cc_test (directly or transitively) therefore never
+# appear in the coverage report - even though they would normally be
+# instrumented under --instrumentation_filter.
+#
+# To surface those files at 0% coverage we ship:
+#
+#   * _collect_sources_aspect - walks the dependency graph of a target,
+#     gathers srcs (.cpp/.cc/.cxx/.c/.C) from every cc_library, cc_binary,
+#     and cc_test it encounters, and aggregates them into
+#     InstrumentedSourcesInfo.
+#   * score_instrumented_sources_manifest - applies the aspect to a list of
+#     consumer-supplied targets and writes a text file with one
+#     workspace-relative source path per line.
+#
+# The consumer points score_coverage_reporter at this manifest via the
+# optional `instrumented_sources_manifest` attribute. The reporter then
+# augments the llvm-cov LCOV + HTML output with synthetic 0%-coverage entries
+# for every manifest entry that did not appear in the report.
+# ---------------------------------------------------------------------------
+
+InstrumentedSourcesInfo = provider(
+    doc = "Aggregate of all C/C++ source files reachable through cc_* targets.",
+    fields = {
+        "sources": "depset of File objects (workspace-local C/C++ source files)",
+    },
+)
+
+_CC_SRC_EXTS = ("cc", "cpp", "cxx", "c", "C")
+_CC_KINDS = ("cc_library", "cc_binary", "cc_test")
+_PROPAGATE_ATTRS = ["deps", "srcs", "implementation_deps"]
+
+def _collect_sources_aspect_impl(target, ctx):
+    direct = []
+    if ctx.rule.kind in _CC_KINDS:
+        for src in getattr(ctx.rule.attr, "srcs", None) or []:
+            for f in src.files.to_list():
+                if f.extension in _CC_SRC_EXTS and not f.short_path.startswith("../"):
+                    direct.append(f)
+
+    transitive = []
+    for attr_name in _PROPAGATE_ATTRS:
+        for dep in getattr(ctx.rule.attr, attr_name, None) or []:
+            if InstrumentedSourcesInfo in dep:
+                transitive.append(dep[InstrumentedSourcesInfo].sources)
+
+    return [InstrumentedSourcesInfo(
+        sources = depset(direct = direct, transitive = transitive),
+    )]
+
+_collect_sources_aspect = aspect(
+    implementation = _collect_sources_aspect_impl,
+    attr_aspects = _PROPAGATE_ATTRS,
+    provides = [InstrumentedSourcesInfo],
+    doc = "Collect C/C++ source files from cc_* targets reachable via deps/srcs.",
+)
+
+def _instrumented_sources_manifest_impl(ctx):
+    transitive = [
+        t[InstrumentedSourcesInfo].sources
+        for t in ctx.attr.targets
+        if InstrumentedSourcesInfo in t
+    ]
+    files = depset(transitive = transitive).to_list()
+
+    # Deduplicate (Starlark has no ordered set type) and sort for determinism.
+    paths = sorted({f.short_path: None for f in files}.keys())
+
+    out = ctx.actions.declare_file(ctx.label.name + ".txt")
+    content = "\n".join(paths) + ("\n" if paths else "")
+    ctx.actions.write(output = out, content = content)
+    return [DefaultInfo(files = depset([out]))]
+
+score_instrumented_sources_manifest = rule(
+    implementation = _instrumented_sources_manifest_impl,
+    attrs = {
+        "targets": attr.label_list(
+            aspects = [_collect_sources_aspect],
+            mandatory = True,
+            doc = "Targets whose transitive cc_* source files should be listed.",
+        ),
+    },
+    doc = """Emit a text manifest of C/C++ source files reachable from `targets`.
+
+The output is a newline-separated list of workspace-relative paths. Pass this
+target to score_coverage_reporter(instrumented_sources_manifest = ...) so the
+reporter can add 0%-coverage entries for files that no test linked against.""",
+)
+
 def score_coverage_reporter(
         name,
         llvm_cov,
         llvm_profdata,
         extra_regex_files = None,
+        instrumented_sources_manifest = None,
         **kwargs):
     """Create a Bazel --coverage_report_generator wrapper for this repository.
 
@@ -70,6 +164,12 @@ def score_coverage_reporter(
                            @score_cpp_policies baseline. Use these to exclude
                            consumer-specific patterns (e.g. project-only
                            generator outputs).
+        instrumented_sources_manifest: Optional label of a
+                           `score_instrumented_sources_manifest` target. When
+                           provided, the reporter adds 0%-coverage entries for
+                           every file in the manifest that did not appear in
+                           the llvm-cov report (i.e. files that no test linked
+                           against).
         **kwargs: Forwarded to the underlying sh_binary (e.g. visibility, tags).
     """
     extra_regex_files = extra_regex_files or []
@@ -78,6 +178,12 @@ def score_coverage_reporter(
     merged_out = merged_name + ".txt"
     wrapper_gen_name = name + "_wrapper_gen"
     wrapper_out = name + ".sh"
+
+    manifest_srcs = [instrumented_sources_manifest] if instrumented_sources_manifest else []
+    manifest_flag_line = (
+        "  --instrumented_sources_manifest=\"$(rlocationpath %s)\" \\\\\n" % instrumented_sources_manifest
+        if instrumented_sources_manifest else ""
+    )
 
     # Concatenate baseline regexes + consumer extras into a single file.
     # Order is irrelevant for llvm-cov; it treats them as a set.
@@ -108,7 +214,7 @@ def score_coverage_reporter(
             "//:MODULE.bazel",
             llvm_cov,
             llvm_profdata,
-        ],
+        ] + manifest_srcs,
         outs = [wrapper_out],
         tools = [_REPORTER],
         cmd = ("""cat > $@ << EOF
@@ -127,10 +233,10 @@ exec "\\$${RUNFILES_DIR}/$(rlocationpath %s)" \\\\
   --workspace_root="\\$${WORKSPACE_ROOT}" \\\\
   --llvm_cov="$(rlocationpath %s)" \\\\
   --llvm_profdata="$(rlocationpath %s)" \\\\
-  "\\$$@"
+%s  "\\$$@"
 EOF
 chmod +x $@
-""" % (_REPORTER, merged_name, llvm_cov, llvm_profdata)),
+""" % (_REPORTER, merged_name, llvm_cov, llvm_profdata, manifest_flag_line)),
     )
 
     sh_binary(
@@ -142,6 +248,6 @@ chmod +x $@
             "//:MODULE.bazel",
             llvm_cov,
             llvm_profdata,
-        ],
+        ] + manifest_srcs,
         **kwargs
     )

@@ -25,6 +25,7 @@ Expected Bazel interface:
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import zipfile
@@ -98,8 +99,6 @@ def main() -> None:
         output_format="html",
         html_report_dir=html_report_dir,
     )
-
-    # Generate LCOV report (for backward compatibility with dashboards).
     lcov_report_dir = Path.cwd() / "lcov_report"
     lcov_report_dir.mkdir(exist_ok=True)
     lcov_result = run_llvm_cov_export(
@@ -108,8 +107,46 @@ def main() -> None:
         filter_regexes=sorted(filter_regexes),
         workspace_root=workspace_root,
     )
+    lcov_text = lcov_result.stdout
+
+    # Augment with 0%-coverage entries for files that no test linked against.
+    untested_sources: List[str] = []
+    if args.instrumented_sources_manifest:
+        manifest_path = r.Rlocation(args.instrumented_sources_manifest)
+        if not manifest_path or not Path(manifest_path).exists():
+            print(
+                f"WARNING: instrumented sources manifest not found via "
+                f"{args.instrumented_sources_manifest}",
+                file=sys.stderr,
+            )
+        else:
+            covered = _covered_sources_from_lcov(lcov_text)
+            untested_sources = _find_untested_sources(
+                manifest_path=Path(manifest_path),
+                workspace_root=workspace_root,
+                covered_sources=covered,
+                filter_regexes=sorted(filter_regexes),
+            )
+            if untested_sources:
+                print(
+                    f"INFO: Augmenting report with {len(untested_sources)} "
+                    f"untested source file(s).",
+                    file=sys.stderr,
+                )
+                lcov_text = _append_zero_coverage_lcov(
+                    lcov_text, untested_sources, workspace_root
+                )
+
     with open(lcov_report_dir / "lcov.dat", "w", encoding="utf-8") as f:
-        f.write(lcov_result.stdout)
+        f.write(lcov_text)
+
+    # Augment the HTML report with 0%-coverage pages for untested files.
+    if untested_sources:
+        _augment_html_with_untested(
+            html_report_dir=html_report_dir,
+            untested_sources=untested_sources,
+            workspace_root=workspace_root,
+        )
 
     # Generate text summary.
     text_report_dir = Path.cwd() / "text_report"
@@ -119,9 +156,12 @@ def main() -> None:
         coverage_args=coverage_args,
         filter_regexes=sorted(filter_regexes),
     )
+    summary_text = summary.stdout
+    if untested_sources:
+        summary_text = _augment_text_summary(summary_text, untested_sources)
     with open(text_report_dir / "summary.txt", "w", encoding="utf-8") as f:
-        f.write(summary.stdout)
-    print(summary.stdout, file=sys.stderr)
+        f.write(summary_text)
+    print(summary_text, file=sys.stderr)
 
     # Package everything into the output zip.
     directories = [html_report_dir, lcov_report_dir, text_report_dir]
@@ -190,7 +230,7 @@ def run_llvm_cov_export(
         cmd.append(f"--ignore-filename-regex={adjusted}")
 
     cmd.extend(coverage_args)
-    return run_command(cmd)
+    return run_command(cmd, separate_stderr=True)
 
 
 def run_llvm_cov_report(
@@ -211,7 +251,7 @@ def run_llvm_cov_report(
         cmd.append(f"--ignore-filename-regex={regex}")
 
     cmd.extend(coverage_args)
-    return run_command(cmd)
+    return run_command(cmd, separate_stderr=True)
 
 
 def extract_reports(reports: List[str]) -> Tuple[Set[str], Set[str]]:
@@ -283,21 +323,28 @@ def write_empty_output(output_file: Path) -> None:
         f.write("")
 
 
-def run_command(cmd: List[str]) -> subprocess.CompletedProcess:
-    """Run a command and exit on failure."""
+def run_command(cmd: List[str], separate_stderr: bool = False) -> subprocess.CompletedProcess:
+    """Run a command and exit on failure.
+
+    When separate_stderr=True, stderr is captured separately from stdout so
+    that callers which parse stdout as structured data (e.g. LCOV text) are
+    not polluted by llvm-cov warning messages.
+    """
+    stderr_target = subprocess.PIPE if separate_stderr else subprocess.STDOUT
     try:
         return subprocess.run(
             cmd,
             check=True,
             stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
+            stderr=stderr_target,
             text=True,
         )
     except subprocess.CalledProcessError as e:
         print(f"ERROR: Command failed with code {e.returncode}:", file=sys.stderr)
         print(f"  {' '.join(cmd)}", file=sys.stderr)
-        if e.stdout:
-            print(e.stdout, file=sys.stderr)
+        output = (e.stdout or "") + (e.stderr or "")
+        if output:
+            print(output, file=sys.stderr)
         sys.exit(1)
 
 
@@ -314,6 +361,299 @@ def create_zip(root: Path, directories: List[Path], output_file: Path) -> None:
                     zf.write(file_path, arcname)
 
 
+def _covered_sources_from_lcov(lcov_text: str) -> Set[str]:
+    """Return the set of absolute source paths that appear in an LCOV report."""
+    sources: Set[str] = set()
+    for line in lcov_text.splitlines():
+        if line.startswith("SF:"):
+            sources.add(os.path.realpath(line[3:].strip()))
+    return sources
+
+
+def _find_untested_sources(
+    manifest_path: Path,
+    workspace_root: str,
+    covered_sources: Set[str],
+    filter_regexes: List[str],
+) -> List[str]:
+    """Read the manifest and return entries not present in covered_sources.
+
+    Manifest entries are workspace-relative paths. Filter regexes from the
+    consumer are applied so that the same exclusions that affect llvm-cov also
+    affect the synthesized entries. Entries that do not resolve to an existing
+    file on disk are dropped silently (typically generated files or stale
+    manifest content).
+    """
+    ws = Path(workspace_root)
+    compiled_filters = [re.compile(r) for r in filter_regexes if r]
+
+    ws_resolved = ws.resolve()
+    untested: List[str] = []
+    seen: Set[str] = set()
+    raw = manifest_path.read_text(encoding="utf-8")
+    for entry in raw.splitlines():
+        rel = entry.strip()
+        if not rel:
+            continue
+        abs_path = (ws / rel).resolve()
+        if not abs_path.is_relative_to(ws_resolved):
+            continue
+        if not abs_path.exists() or not abs_path.is_file():
+            continue
+        abs_str = str(abs_path)
+        if abs_str in covered_sources or abs_str in seen:
+            continue
+        if any(rx.search(abs_str) or rx.search(rel) for rx in compiled_filters):
+            continue
+        seen.add(abs_str)
+        untested.append(abs_str)
+    return sorted(untested)
+
+
+def _count_nonblank_lines(path: str) -> Tuple[List[int], int]:
+    """Return (list of 1-based non-blank line numbers, total non-blank count)."""
+    line_numbers: List[int] = []
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            for i, line in enumerate(f, 1):
+                if line.strip():
+                    line_numbers.append(i)
+    except OSError:
+        pass
+    return line_numbers, len(line_numbers)
+
+
+def _append_zero_coverage_lcov(
+    lcov_text: str, untested_sources: List[str], workspace_root: str
+) -> str:
+    """Append minimal zero-coverage LCOV records for each untested source."""
+    blocks: List[str] = []
+    for abs_path in untested_sources:
+        line_numbers, lf = _count_nonblank_lines(abs_path)
+        if lf == 0:
+            continue
+        da = "\n".join(f"DA:{n},0" for n in line_numbers)
+        block = (
+            f"SF:{abs_path}\n"
+            f"{da}\n"
+            f"LF:{lf}\n"
+            f"LH:0\n"
+            "end_of_record\n"
+        )
+        blocks.append(block)
+    if not blocks:
+        return lcov_text
+    sep = "" if lcov_text.endswith("\n") else "\n"
+    return lcov_text + sep + "".join(blocks)
+
+
+def _augment_text_summary(summary_text: str, untested_sources: List[str]) -> str:
+    """Re-compute the TOTALS line in the llvm-cov report summary.
+
+    llvm-cov report --summary-only emits a table ending with a TOTALS row:
+
+        TOTAL  <regions> <miss> <cover> <functions> ... <lines> <miss> <cover> <branches> ...
+
+    We parse the existing totals, add the untested file line counts, and
+    rewrite the TOTALS row so that summary.txt and the CI console reflect the
+    augmented numbers.
+    """
+    extra_lines_found = 0
+    for abs_path in untested_sources:
+        _, lf = _count_nonblank_lines(abs_path)
+        extra_lines_found += lf
+
+    if extra_lines_found == 0:
+        return summary_text
+
+    lines = summary_text.splitlines(keepends=True)
+    totals_idx = None
+    for i in range(len(lines) - 1, -1, -1):
+        if lines[i].strip().startswith("TOTAL"):
+            totals_idx = i
+            break
+
+    if totals_idx is None:
+        banner = (
+            f"\n[score-coverage] {len(untested_sources)} file(s) not linked "
+            f"into any test ({extra_lines_found} lines at 0% coverage) — "
+            f"not reflected in the TOTALS above.\n"
+        )
+        return summary_text + banner
+
+    totals_line = lines[totals_idx]
+
+    # llvm-cov report --summary-only with --show-region-summary=0 emits:
+    #   TOTAL  <fn> <fn_miss> <fn_cover%>  <lines> <lines_miss> <lines_cover%>  ...
+    # We match the second numeric triple (the Lines group) and do an in-place
+    # substitution that preserves the original fixed-width whitespace.
+    pct_groups = list(re.finditer(r"(\d+)(\s+)(\d+)(\s+)([\d.]+%)", totals_line))
+
+    if len(pct_groups) >= 2:
+        m = pct_groups[1]  # second triple = Lines group
+        try:
+            old_lf = int(m.group(1))
+            old_lm = int(m.group(3))
+            new_lf = old_lf + extra_lines_found
+            new_lm = old_lm + extra_lines_found
+            new_pct = ((new_lf - new_lm) / new_lf * 100) if new_lf > 0 else 0
+
+            old_lf_str = m.group(1)
+            old_lm_str = m.group(3)
+            old_pct_str = m.group(5)
+            new_lf_str = str(new_lf).rjust(len(old_lf_str))
+            new_lm_str = str(new_lm).rjust(len(old_lm_str))
+            new_pct_str = f"{new_pct:.2f}%".rjust(len(old_pct_str))
+
+            replacement = (
+                new_lf_str + m.group(2) + new_lm_str + m.group(4) + new_pct_str
+            )
+            lines[totals_idx] = (
+                totals_line[:m.start()] + replacement + totals_line[m.end():]
+            )
+            return "".join(lines)
+        except (ValueError, IndexError):
+            pass
+
+    banner = (
+        f"\n[score-coverage] {len(untested_sources)} file(s) not linked "
+        f"into any test ({extra_lines_found} lines at 0% coverage) — "
+        f"not reflected in the TOTALS above.\n"
+    )
+    return summary_text + banner
+
+
+_UNTESTED_HTML_TEMPLATE = """<!doctype html>
+<html>
+<head>
+  <meta charset='UTF-8'>
+  <link rel='stylesheet' type='text/css' href='{css_path}'>
+  <title>{title}</title>
+</head>
+<body>
+<h2>Coverage Report</h2>
+<h4>{title}</h4>
+<p style='background:#fdd;padding:10px;border-radius:5px;border:1px solid #c66;'>
+<strong>Not linked into any test.</strong> This source file is reachable from
+the configured coverage targets but no test binary instruments it, so every
+line is reported as uncovered.
+</p>
+<table>
+<tr><td class='code'><pre>
+{body}
+</pre></td></tr>
+</table>
+</body>
+</html>
+"""
+
+
+def _augment_html_with_untested(
+    html_report_dir: Path,
+    untested_sources: List[str],
+    workspace_root: str,
+) -> None:
+    """Create per-file HTML pages for untested sources and link them from index.
+
+    The pages are intentionally minimal: llvm-cov's per-source HTML format is
+    not easily reproducible without the full coverage mapping, so we render a
+    plain source dump with a banner that explains the file was not exercised.
+    The index page gets a new "Not Linked Into Tests" section listing the
+    files at 0% coverage so the gap is visible to reviewers.
+    """
+    if not html_report_dir.exists():
+        return
+
+    coverage_subdir = html_report_dir / "coverage"
+    output_root = coverage_subdir if coverage_subdir.exists() else html_report_dir
+
+    entries: List[Tuple[str, str, int]] = []  # (rel_source, href, num_lines)
+    for abs_path in untested_sources:
+        rel_source = os.path.relpath(abs_path, workspace_root)
+        # Mirror llvm-cov: per-source HTML lives at <output_root>/<abs path>.html
+        # Strip the leading "/" so that the path joins under output_root.
+        target_html = output_root / (abs_path.lstrip("/") + ".html")
+        target_html.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            with open(abs_path, "r", encoding="utf-8", errors="replace") as f:
+                source_text = f.read()
+        except OSError:
+            continue
+        num_lines = source_text.count("\n") + (
+            0 if source_text.endswith("\n") or not source_text else 1
+        )
+
+        rel_to_root = os.path.relpath(html_report_dir, target_html.parent)
+        css_path = (Path(rel_to_root) / "style.css").as_posix()
+        body = _escape_html(source_text) or "(empty file)"
+        html = (
+            _UNTESTED_HTML_TEMPLATE
+            .replace("{css_path}", css_path)
+            .replace("{title}", _escape_html(rel_source))
+            .replace("{body}", body)
+        )
+        target_html.write_text(html, encoding="utf-8")
+
+        href = target_html.relative_to(html_report_dir).as_posix()
+        entries.append((rel_source, href, max(num_lines, 1)))
+
+    if not entries:
+        return
+
+    _inject_untested_section_into_index(html_report_dir / "index.html", entries)
+
+
+def _escape_html(text: str) -> str:
+    return (
+        text.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("'", "&#39;")
+        .replace('"', "&quot;")
+    )
+
+
+def _inject_untested_section_into_index(
+    index_file: Path, entries: List[Tuple[str, str, int]]
+) -> None:
+    """Insert a banner + table of untested files into the llvm-cov index page."""
+    if not index_file.exists():
+        return
+
+    content = index_file.read_text(encoding="utf-8")
+
+    rows = []
+    for rel_source, href, num_lines in entries:
+        rows.append(
+            "<tr class='light-row'>"
+            f"<td><pre><a href='{_escape_html(href)}'>{_escape_html(rel_source)}</a></pre></td>"
+            f"<td class='column-entry-red'><pre>  0.00% (0/{num_lines})</pre></td>"
+            "<td class='column-entry-red'><pre>Not linked into any test</pre></td>"
+            "</tr>"
+        )
+
+    section = (
+        "<div style='background:#fdd;padding:10px;margin:10px 0;border-radius:5px;"
+        "border:1px solid #c66;'>"
+        f"<strong>{len(entries)} file(s) not linked into any test "
+        "(counted as 0% coverage).</strong>"
+        "</div>"
+        "<h3>Not Linked Into Tests</h3>"
+        "<table><tr><td class='column-entry-bold'>Filename</td>"
+        "<td class='column-entry-bold'>Line Coverage</td>"
+        "<td class='column-entry-bold'>Note</td></tr>"
+        f"{''.join(rows)}</table>"
+    )
+
+    if "</body>" in content:
+        content = content.replace("</body>", section + "</body>", 1)
+    else:
+        content += section
+
+    index_file.write_text(content, encoding="utf-8")
+
+
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments matching the Bazel coverage_report_generator interface."""
     parser = argparse.ArgumentParser(description="LLVM coverage reporter for Bazel")
@@ -327,6 +667,11 @@ def parse_args() -> argparse.Namespace:
                         help="Rlocation path of the llvm-cov binary")
     parser.add_argument("--llvm_profdata", type=str, required=True,
                         help="Rlocation path of the llvm-profdata binary")
+    parser.add_argument("--instrumented_sources_manifest", type=str, default=None,
+                        help="Optional rlocation path to a text file listing "
+                             "workspace-relative source files that are expected "
+                             "to be instrumented. Sources missing from the "
+                             "llvm-cov output are added at 0%% coverage.")
     return parser.parse_args()
 
 

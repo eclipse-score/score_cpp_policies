@@ -19,12 +19,26 @@
 # `bazel run //coverage:generate_coverage_html -- --yaml coverage/coverage_justifications.yaml`.
 
 load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
-load("@score_cpp_policies//coverage:defs.bzl", "score_coverage_reporter")
+load(
+    "@score_cpp_policies//coverage:defs.bzl",
+    "score_coverage_reporter",
+    "score_instrumented_sources_manifest",
+)
 
 cc_library(
     name = "coverable",
     srcs = ["coverable.cpp"],
     hdrs = ["coverable.h"],
+    visibility = ["//visibility:public"],
+)
+
+# A library that is intentionally NOT linked into any cc_test. It exercises
+# the "untested files" augmentation: the reporter must surface this file at
+# 0% coverage even though llvm-cov never sees its object file.
+cc_library(
+    name = "uncovered",
+    srcs = ["uncovered.cpp"],
+    hdrs = ["uncovered.h"],
     visibility = ["//visibility:public"],
 )
 
@@ -43,9 +57,22 @@ cc_test(
 # Exposed for the macro to consume.
 exports_files(["coverage_filter_regexes.txt"])
 
+# Manifest of all C/C++ sources reachable from the coverage targets. Anything
+# in here that does not appear in the llvm-cov report is added at 0% coverage
+# by the reporter.
+score_instrumented_sources_manifest(
+    name = "instrumented_sources",
+    targets = [
+        ":coverable",
+        ":uncovered",
+        ":coverable_test",
+    ],
+)
+
 score_coverage_reporter(
     name = "reporter_wrapper",
     extra_regex_files = [":coverage_filter_regexes.txt"],
+    instrumented_sources_manifest = ":instrumented_sources",
     llvm_cov = "@llvm_toolchain//:llvm-cov",
     llvm_profdata = "@llvm_toolchain//:llvm-profdata",
     visibility = ["//visibility:public"],

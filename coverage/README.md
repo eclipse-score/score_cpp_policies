@@ -116,6 +116,48 @@ Example `tools/coverage/coverage_filter_regexes.txt`:
 coverage --coverage_report_generator=//tools/coverage:reporter_wrapper
 ```
 
+## 5a. (Optional) Surface untested files at 0% coverage
+
+`llvm-cov` only reports source files that are linked into at least one
+exercised test. Source files that ship in the project but no test pulls in
+will silently disappear from the report — which usually misrepresents
+coverage as higher than it actually is.
+
+To surface those files at 0% coverage, build a manifest of every C/C++
+source reachable from your coverage roots and pass it to the reporter:
+
+```python
+load(
+    "@score_cpp_policies//coverage:defs.bzl",
+    "score_coverage_reporter",
+    "score_instrumented_sources_manifest",
+)
+
+score_instrumented_sources_manifest(
+    name = "instrumented_sources",
+    # The aspect walks `deps` (and `srcs`) recursively, so listing the
+    # top-level library/binary/test targets is enough.
+    targets = [
+        "//mymod:lib",
+        "//mymod/tests:all_tests",
+    ],
+)
+
+score_coverage_reporter(
+    name = "reporter_wrapper",
+    llvm_cov = "@llvm_toolchain//:llvm-cov",
+    llvm_profdata = "@llvm_toolchain//:llvm-profdata",
+    extra_regex_files = [":coverage_filter_regexes.txt"],
+    instrumented_sources_manifest = ":instrumented_sources",
+    visibility = ["//visibility:public"],
+)
+```
+
+Anything in the manifest that the llvm-cov export does not already cover
+(and that survives the configured `--ignore-filename-regex` set) is added
+as a synthetic 0%-coverage record to the LCOV file and gets a per-file
+HTML page plus a "Not Linked Into Tests" section on the report index.
+
 ## 6. (Optional) Set up justifications
 
 Create `tools/coverage/coverage_justifications.yaml`:
