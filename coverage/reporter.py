@@ -410,13 +410,43 @@ def _find_untested_sources(
     return sorted(untested)
 
 
-def _count_nonblank_lines(path: str) -> Tuple[List[int], int]:
-    """Return (list of 1-based non-blank line numbers, total non-blank count)."""
+_NON_EXECUTABLE_RE = re.compile(
+    r"^\s*("
+    r"[{}]"                        # lone braces
+    r"|//.*"                       # line comments
+    r"|/\*.*"                      # block comment open
+    r"|\*.*"                       # block comment continuation / close
+    r"|\*/.*"                      # block comment close
+    r"|#\s*(?:include|define|undef|if|ifdef|ifndef|elif|else|endif|pragma|error|warning)\b.*"
+    r"|namespace\b[^{;]*[{]?\s*"   # namespace declarations
+    r"|}\s*//.*"                    # closing brace with comment
+    r"|}\s*namespace.*"            # closing namespace
+    r"|public\s*:|private\s*:|protected\s*:"
+    r")\s*$"
+)
+
+
+def _is_likely_executable(line: str) -> bool:
+    """Heuristic: return True if a line is likely an executable C/C++ statement."""
+    stripped = line.strip()
+    if not stripped:
+        return False
+    return _NON_EXECUTABLE_RE.match(line) is None
+
+
+def _count_instrumentable_lines(path: str) -> Tuple[List[int], int]:
+    """Return (list of 1-based likely-executable line numbers, count).
+
+    This is a conservative approximation. Without a real parser we cannot
+    perfectly distinguish executable from non-executable lines. The heuristic
+    excludes blank lines, comments, preprocessor directives, lone braces,
+    namespace declarations, and access specifiers.
+    """
     line_numbers: List[int] = []
     try:
         with open(path, "r", encoding="utf-8", errors="replace") as f:
             for i, line in enumerate(f, 1):
-                if line.strip():
+                if _is_likely_executable(line):
                     line_numbers.append(i)
     except OSError:
         pass
@@ -429,7 +459,7 @@ def _append_zero_coverage_lcov(
     """Append minimal zero-coverage LCOV records for each untested source."""
     blocks: List[str] = []
     for abs_path in untested_sources:
-        line_numbers, lf = _count_nonblank_lines(abs_path)
+        line_numbers, lf = _count_instrumentable_lines(abs_path)
         if lf == 0:
             continue
         da = "\n".join(f"DA:{n},0" for n in line_numbers)
@@ -460,7 +490,7 @@ def _augment_text_summary(summary_text: str, untested_sources: List[str]) -> str
     """
     extra_lines_found = 0
     for abs_path in untested_sources:
-        _, lf = _count_nonblank_lines(abs_path)
+        _, lf = _count_instrumentable_lines(abs_path)
         extra_lines_found += lf
 
     if extra_lines_found == 0:
@@ -483,14 +513,24 @@ def _augment_text_summary(summary_text: str, untested_sources: List[str]) -> str
 
     totals_line = lines[totals_idx]
 
-    # llvm-cov report --summary-only with --show-region-summary=0 emits:
-    #   TOTAL  <fn> <fn_miss> <fn_cover%>  <lines> <lines_miss> <lines_cover%>  ...
-    # We match the second numeric triple (the Lines group) and do an in-place
-    # substitution that preserves the original fixed-width whitespace.
+    # Determine which numeric triple corresponds to "Lines" by inspecting the
+    # column header (the line immediately above TOTAL).  llvm-cov report emits
+    # headers like "Filename  Function  Line  Branch  ...".  We find the
+    # column position of "Line" in the header and match it to the correct
+    # numeric group in the TOTALS row.
+    lines_group_idx = None
+    if totals_idx > 0:
+        header_line = lines[totals_idx - 1]
+        header_cols = re.finditer(r"\b(Regions?|Functions?|Lines?|Branches?)\b", header_line)
+        for col_idx, col_match in enumerate(header_cols):
+            if col_match.group().startswith("Line"):
+                lines_group_idx = col_idx
+                break
+
     pct_groups = list(re.finditer(r"(\d+)(\s+)(\d+)(\s+)([\d.]+%)", totals_line))
 
-    if len(pct_groups) >= 2:
-        m = pct_groups[1]  # second triple = Lines group
+    if lines_group_idx is not None and lines_group_idx < len(pct_groups):
+        m = pct_groups[lines_group_idx]
         try:
             old_lf = int(m.group(1))
             old_lm = int(m.group(3))
