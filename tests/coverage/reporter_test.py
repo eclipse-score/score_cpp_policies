@@ -214,7 +214,7 @@ class EscapeHtmlTest(unittest.TestCase):
 
 
 class AugmentTextSummaryTest(unittest.TestCase):
-    def test_rewrites_totals_line(self):
+    def test_appends_banner_without_modifying_totals(self):
         with tempfile.TemporaryDirectory() as ws:
             src = Path(ws) / "untested.cpp"
             src.write_text("int foo() {\n    return 42;\n}\n")
@@ -222,22 +222,24 @@ class AugmentTextSummaryTest(unittest.TestCase):
             summary = textwrap.dedent("""\
                 Filename                      Functions                          Lines                      Branches
                 ---                           ---                                ---                        ---
-                /ws/tested.cpp                      2             0       100.00%           10                0       100.00%           4                0       100.00%
-                ---                           ---                                ---                        ---
                 TOTAL                               2             0       100.00%           10                0       100.00%           4                0       100.00%
             """)
             result = _augment_text_summary(summary, [str(src)])
-            self.assertNotIn("100.00%", result.split("\n")[-2])
-            self.assertIn("TOTAL", result)
+            self.assertIn("[score-coverage]", result)
+            self.assertIn("WARNING", result)
+            self.assertIn("estimated via heuristic", result)
+            totals_line = [l for l in result.splitlines() if "TOTAL" in l and "score-coverage" not in l][0]
+            self.assertIn("100.00%", totals_line)
 
-    def test_fallback_banner_on_missing_header(self):
+    def test_banner_contains_file_count_and_line_estimate(self):
         with tempfile.TemporaryDirectory() as ws:
             src = Path(ws) / "untested.cpp"
             src.write_text("int foo() { return 1; }\n")
 
             summary = "TOTAL  2  0  100.00%  10  0  100.00%\n"
             result = _augment_text_summary(summary, [str(src)])
-            self.assertIn("[score-coverage]", result)
+            self.assertIn("1 source file(s)", result)
+            self.assertIn("~1 instrumentable lines", result)
 
 
 if __name__ == "__main__":

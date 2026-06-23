@@ -456,7 +456,13 @@ def _count_instrumentable_lines(path: str) -> Tuple[List[int], int]:
 def _append_zero_coverage_lcov(
     lcov_text: str, untested_sources: List[str], workspace_root: str
 ) -> str:
-    """Append minimal zero-coverage LCOV records for each untested source."""
+    """Append synthetic zero-coverage LCOV records for each untested source.
+
+    LF/DA values are heuristic estimates from _count_instrumentable_lines,
+    not actual llvm-cov instrumentation data. The counts approximate what
+    llvm-cov would report but may differ for templates, inlined constructors,
+    multi-line statements, initializer lists, and lambdas.
+    """
     blocks: List[str] = []
     for abs_path in untested_sources:
         line_numbers, lf = _count_instrumentable_lines(abs_path)
@@ -478,87 +484,26 @@ def _append_zero_coverage_lcov(
 
 
 def _augment_text_summary(summary_text: str, untested_sources: List[str]) -> str:
-    """Re-compute the TOTALS line in the llvm-cov report summary.
+    """Append a banner to the llvm-cov report summary for untested files.
 
-    llvm-cov report --summary-only emits a table ending with a TOTALS row:
-
-        TOTAL  <regions> <miss> <cover> <functions> ... <lines> <miss> <cover> <branches> ...
-
-    We parse the existing totals, add the untested file line counts, and
-    rewrite the TOTALS row so that summary.txt and the CI console reflect the
-    augmented numbers.
+    The TOTALS line from llvm-cov is left untouched because the heuristic
+    line count (_count_instrumentable_lines) is only an approximation — it
+    cannot replicate what llvm-cov would report for actually-instrumented
+    object files. Rewriting TOTALS with approximate numbers would give a
+    false sense of precision. Instead we append a clearly-labelled banner
+    so that CI consumers and reviewers see the gap without mistaking an
+    estimate for an exact measurement.
     """
     extra_lines_found = 0
     for abs_path in untested_sources:
         _, lf = _count_instrumentable_lines(abs_path)
         extra_lines_found += lf
 
-    if extra_lines_found == 0:
-        return summary_text
-
-    lines = summary_text.splitlines(keepends=True)
-    totals_idx = None
-    for i in range(len(lines) - 1, -1, -1):
-        if lines[i].strip().startswith("TOTAL"):
-            totals_idx = i
-            break
-
-    if totals_idx is None:
-        banner = (
-            f"\n[score-coverage] {len(untested_sources)} file(s) not linked "
-            f"into any test ({extra_lines_found} lines at 0% coverage) — "
-            f"not reflected in the TOTALS above.\n"
-        )
-        return summary_text + banner
-
-    totals_line = lines[totals_idx]
-
-    # Determine which numeric triple corresponds to "Lines" by inspecting the
-    # column header (the line immediately above TOTAL).  llvm-cov report emits
-    # headers like "Filename  Function  Line  Branch  ...".  We find the
-    # column position of "Line" in the header and match it to the correct
-    # numeric group in the TOTALS row.
-    lines_group_idx = None
-    if totals_idx > 0:
-        header_line = lines[totals_idx - 1]
-        header_cols = re.finditer(r"\b(Regions?|Functions?|Lines?|Branches?)\b", header_line)
-        for col_idx, col_match in enumerate(header_cols):
-            if col_match.group().startswith("Line"):
-                lines_group_idx = col_idx
-                break
-
-    pct_groups = list(re.finditer(r"(\d+)(\s+)(\d+)(\s+)([\d.]+%)", totals_line))
-
-    if lines_group_idx is not None and lines_group_idx < len(pct_groups):
-        m = pct_groups[lines_group_idx]
-        try:
-            old_lf = int(m.group(1))
-            old_lm = int(m.group(3))
-            new_lf = old_lf + extra_lines_found
-            new_lm = old_lm + extra_lines_found
-            new_pct = ((new_lf - new_lm) / new_lf * 100) if new_lf > 0 else 0
-
-            old_lf_str = m.group(1)
-            old_lm_str = m.group(3)
-            old_pct_str = m.group(5)
-            new_lf_str = str(new_lf).rjust(len(old_lf_str))
-            new_lm_str = str(new_lm).rjust(len(old_lm_str))
-            new_pct_str = f"{new_pct:.2f}%".rjust(len(old_pct_str))
-
-            replacement = (
-                new_lf_str + m.group(2) + new_lm_str + m.group(4) + new_pct_str
-            )
-            lines[totals_idx] = (
-                totals_line[:m.start()] + replacement + totals_line[m.end():]
-            )
-            return "".join(lines)
-        except (ValueError, IndexError):
-            pass
-
     banner = (
-        f"\n[score-coverage] {len(untested_sources)} file(s) not linked "
-        f"into any test ({extra_lines_found} lines at 0% coverage) — "
-        f"not reflected in the TOTALS above.\n"
+        f"\n[score-coverage] WARNING: {len(untested_sources)} source file(s) "
+        f"not linked into any test (~{extra_lines_found} instrumentable lines, "
+        f"estimated via heuristic). These files are absent from the TOTALS above "
+        f"and contribute 0% coverage. See lcov.dat and the HTML report for details.\n"
     )
     return summary_text + banner
 
@@ -657,39 +602,65 @@ def _escape_html(text: str) -> str:
 def _inject_untested_section_into_index(
     index_file: Path, entries: List[Tuple[str, str, int]]
 ) -> None:
-    """Insert a banner + table of untested files into the llvm-cov index page."""
+    """Insert a top-banner and detail table for untested files into the index.
+
+    The banner is injected right after <body> so it is the first thing a
+    reviewer sees. It explicitly labels the line count as a heuristic
+    estimate to avoid false precision. The detail table with per-file links
+    is appended before </body>.
+    """
     if not index_file.exists():
         return
 
     content = index_file.read_text(encoding="utf-8")
+
+    total_estimated_lines = sum(n for _, _, n in entries)
+
+    top_banner = (
+        "<div style='background:#fdd;padding:12px 16px;margin:0 0 16px 0;"
+        "border-radius:5px;border:1px solid #c66;font-size:14px;'>"
+        f"<strong>⚠️ {len(entries)} source file(s) not linked into "
+        f"any test</strong> (~{total_estimated_lines} instrumentable lines, "
+        "estimated via heuristic). The coverage percentages above do "
+        "<em>not</em> include these files. See the "
+        "<a href='#untested-files'>detail table</a> below."
+        "</div>"
+    )
 
     rows = []
     for rel_source, href, num_lines in entries:
         rows.append(
             "<tr class='light-row'>"
             f"<td><pre><a href='{_escape_html(href)}'>{_escape_html(rel_source)}</a></pre></td>"
-            f"<td class='column-entry-red'><pre>  0.00% (0/{num_lines})</pre></td>"
+            f"<td class='column-entry-red'><pre>  0.00% (0/~{num_lines})</pre></td>"
             "<td class='column-entry-red'><pre>Not linked into any test</pre></td>"
             "</tr>"
         )
 
-    section = (
-        "<div style='background:#fdd;padding:10px;margin:10px 0;border-radius:5px;"
-        "border:1px solid #c66;'>"
-        f"<strong>{len(entries)} file(s) not linked into any test "
-        "(counted as 0% coverage).</strong>"
-        "</div>"
+    detail_section = (
+        "<a id='untested-files'></a>"
         "<h3>Not Linked Into Tests</h3>"
+        "<p style='color:#666;font-size:12px;'>Line counts are heuristic "
+        "estimates (non-blank, non-comment, non-directive lines). Actual "
+        "instrumentable line counts may differ from what llvm-cov would report.</p>"
         "<table><tr><td class='column-entry-bold'>Filename</td>"
-        "<td class='column-entry-bold'>Line Coverage</td>"
+        "<td class='column-entry-bold'>Line Coverage (est.)</td>"
         "<td class='column-entry-bold'>Note</td></tr>"
         f"{''.join(rows)}</table>"
     )
 
-    if "</body>" in content:
-        content = content.replace("</body>", section + "</body>", 1)
+    if "<body>" in content:
+        content = content.replace("<body>", "<body>" + top_banner, 1)
+    elif "<body " in content:
+        body_end = content.index("<body ") + content[content.index("<body "):].index(">") + 1
+        content = content[:body_end] + top_banner + content[body_end:]
     else:
-        content += section
+        content = top_banner + content
+
+    if "</body>" in content:
+        content = content.replace("</body>", detail_section + "</body>", 1)
+    else:
+        content += detail_section
 
     index_file.write_text(content, encoding="utf-8")
 
