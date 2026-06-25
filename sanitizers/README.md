@@ -107,6 +107,10 @@ Available constraints:
 | `no_lsan` | Skip when LSan is active |
 | `no_tsan` | Skip when TSan is active |
 | `no_asan_ubsan_lsan` | Skip when **any** of ASan, UBSan, or LSan is active (see note below) |
+| `only_asan` | Only run when ASan is active |
+| `only_ubsan` | Only run when UBSan is active |
+| `only_lsan` | Only run when LSan is active |
+| `only_tsan` | Only run when TSan is active |
 
 > **Note — `no_asan_ubsan_lsan` semantic:**  
 > In the previous single-flag API, `no_asan_ubsan_lsan` was satisfied only when the
@@ -145,12 +149,6 @@ Invalid combinations are caught at **build time** by
 `@score_cpp_policies//sanitizers/flags:sanitizer_combination_check` (the CI
 test suite depends on this target automatically via `tests/BUILD.bazel`).
 
-
-| `only_asan` | Only run when ASan is active |
-| `only_ubsan` | Only run when UBSan is active |
-| `only_lsan` | Only run when LSan is active |
-| `only_tsan` | Only run when TSan is active |
-
 ### `wrapper.sh` — Runtime environment loader
 
 The test runner script. It is set via `--run_under` in `sanitizers.bazelrc`
@@ -186,3 +184,34 @@ llvm.toolchain(
 Runtime suppression files live in `suppressions/`. Add suppressions for known
 false positives in your module's `.bazelrc` or by passing the suppression file
 path in the `*_OPTIONS` environment variable.
+
+---
+
+## Migration from v0.x
+
+The `--@score_cpp_policies//sanitizers/flags:sanitizer=<value>` string flag has been removed.
+Replace any direct flag usage with the equivalent `--config=` alias:
+
+| Old | New |
+|-----|-----|
+| `--@score_cpp_policies//sanitizers/flags:sanitizer=asan_ubsan_lsan` | `--config=asan_ubsan_lsan` |
+| `--@score_cpp_policies//sanitizers/flags:sanitizer=tsan` | `--config=tsan` |
+
+`--config=asan`, `--config=ubsan`, and `--config=lsan` now activate exactly their named
+sanitizer rather than the combined `asan_ubsan_lsan` mode.
+
+### GCC-specific feature variants removed
+
+The `asan_ubsan_lsan_gcc` and `tsan_gcc` `cc_feature` targets (which omitted
+`-fsanitize-link-c++-runtime`) have been removed. The new per-sanitizer features
+(`score_asan`, `score_ubsan`, etc.) work with both Clang and GCC toolchains. If you were
+registering GCC-specific features explicitly in your toolchain, replace them with the new
+single features (e.g. `@score_cpp_policies//sanitizers/features:asan`).
+
+### `no_asan_ubsan_lsan` constraint semantics changed
+
+See the `constraints/` section above — in the previous
+single-flag API, `no_asan_ubsan_lsan` was satisfied only when the combined
+`asan_ubsan_lsan` preset was active (all three flags simultaneously). In the current
+per-flag API it is satisfied when **any one** of the three flags is set. Prefer the more
+granular `no_asan`, `no_ubsan`, or `no_lsan` constraints for new targets.
