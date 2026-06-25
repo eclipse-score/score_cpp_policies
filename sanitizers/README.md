@@ -185,6 +185,11 @@ Runtime suppression files live in `suppressions/`. Add suppressions for known
 false positives in your module's `.bazelrc` or by passing the suppression file
 path in the `*_OPTIONS` environment variable.
 
+`@score_cpp_policies//sanitizers:suppressions` exposes all four files as a
+`filegroup`, for consumers that need to package them alongside their own
+repo-specific suppressions (e.g. into an OCI/Docker image for integration
+testing) rather than relying on `wrapper` at test-run time.
+
 ---
 
 ## Migration from v0.x

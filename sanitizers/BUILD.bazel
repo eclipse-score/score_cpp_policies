@@ -18,6 +18,17 @@ exports_files(
     visibility = ["//visibility:public"],
 )
 
+filegroup(
+    name = "suppressions",
+    srcs = [
+        "suppressions/asan.supp",
+        "suppressions/lsan.supp",
+        "suppressions/tsan.supp",
+        "suppressions/ubsan.supp",
+    ],
+    visibility = ["//visibility:public"],
+)
+
 _SANITIZERS = {
     "asan": "templates/asan.env.template",
     "ubsan": "templates/ubsan.env.template",
