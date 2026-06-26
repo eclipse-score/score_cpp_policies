@@ -83,7 +83,11 @@ def main() -> None:
 
     # Get filter regexes and workspace root.
     filter_regexes = load_filter_regexes(r, args.filter_regexes)
-    workspace_root = args.workspace_root
+    module_bazel_resolved = r.Rlocation(args.module_bazel)
+    if not module_bazel_resolved:
+        print(f"ERROR: MODULE.bazel not found in runfiles via {args.module_bazel}", file=sys.stderr)
+        sys.exit(1)
+    workspace_root = str(Path(module_bazel_resolved).parent) + "/"
 
     common_show_args = {
         "llvm_bin_path": llvm_bin_path,
@@ -672,8 +676,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reports_file", type=Path, required=True)
     parser.add_argument("--filter_regexes", type=str, required=True,
                         help="Rlocation path to the filter regexes file")
-    parser.add_argument("--workspace_root", type=str, required=True,
-                        help="Real workspace root path for source path mapping")
+    parser.add_argument("--module_bazel", type=str, required=True,
+                        help="Rlocation path of the consumer MODULE.bazel; "
+                             "its parent directory is used as the workspace root")
     parser.add_argument("--llvm_cov", type=str, required=True,
                         help="Rlocation path of the llvm-cov binary")
     parser.add_argument("--llvm_profdata", type=str, required=True,

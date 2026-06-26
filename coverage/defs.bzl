@@ -44,7 +44,6 @@ and from the consumer .bazelrc:
     coverage --coverage_report_generator=//tools/coverage:reporter_wrapper
 """
 
-load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 
 _BASELINE_REGEX = "@score_cpp_policies//coverage:filter_regexes.txt"
 _REPORTER = "@score_cpp_policies//coverage:reporter"
@@ -142,6 +141,98 @@ target to score_coverage_reporter(instrumented_sources_manifest = ...) so the
 reporter can add 0%-coverage entries for files that no test linked against.""",
 )
 
+def _rlocation_path(ctx, file):
+    """Return the Runfiles.Rlocation()-compatible path for a Bazel File.
+
+    External-repo files have short_path = "../repo/path" — strip the "../".
+    Main-workspace files have short_path = "pkg/file" — prepend workspace name.
+    """
+    if file.short_path.startswith("../"):
+        return file.short_path[3:]
+    return ctx.workspace_name + "/" + file.short_path
+
+# Template for the thin wrapper script generated per consumer.
+# Uses %s substitution so bash $-variables are never touched by Starlark.
+_WRAPPER_TEMPLATE = """\
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ -z "${RUNFILES_DIR:-}" || ! -d "${RUNFILES_DIR}" ]]; then
+  RUNFILES_DIR="$(cd "$(dirname "$0")" && pwd)/$(basename "$0").runfiles"
+fi
+exec "${RUNFILES_DIR}/%s" \\
+  --filter_regexes="%s" \\
+  --module_bazel="%s" \\
+  --llvm_cov="%s" \\
+  --llvm_profdata="%s" \\
+%s  "$@"
+"""
+
+
+def _score_coverage_reporter_impl(ctx):
+    reporter_rloc = _rlocation_path(ctx, ctx.executable._reporter)
+    filter_rloc = _rlocation_path(ctx, ctx.file.filter_regexes)
+    module_bazel_rloc = _rlocation_path(ctx, ctx.file.module_bazel)
+    llvm_cov_rloc = _rlocation_path(ctx, ctx.file.llvm_cov)
+    llvm_profdata_rloc = _rlocation_path(ctx, ctx.file.llvm_profdata)
+
+    manifest_line = ""
+    if ctx.file.instrumented_sources_manifest:
+        manifest_rloc = _rlocation_path(ctx, ctx.file.instrumented_sources_manifest)
+        manifest_line = (
+            "  --instrumented_sources_manifest=\"%s\" \\\n" % manifest_rloc
+        )
+
+    wrapper = ctx.actions.declare_file(ctx.label.name + ".sh")
+    ctx.actions.write(
+        output = wrapper,
+        content = _WRAPPER_TEMPLATE % (
+            reporter_rloc,
+            filter_rloc,
+            module_bazel_rloc,
+            llvm_cov_rloc,
+            llvm_profdata_rloc,
+            manifest_line,
+        ),
+        is_executable = True,
+    )
+
+    runfiles_files = [
+        ctx.file.filter_regexes,
+        ctx.file.module_bazel,
+        ctx.file.llvm_cov,
+        ctx.file.llvm_profdata,
+    ]
+    if ctx.file.instrumented_sources_manifest:
+        runfiles_files.append(ctx.file.instrumented_sources_manifest)
+
+    runfiles = ctx.runfiles(files = runfiles_files).merge(
+        ctx.attr._reporter[DefaultInfo].default_runfiles,
+    )
+
+    return [DefaultInfo(executable = wrapper, runfiles = runfiles)]
+
+
+_score_coverage_reporter_rule = rule(
+    implementation = _score_coverage_reporter_impl,
+    executable = True,
+    attrs = {
+        "llvm_cov": attr.label(mandatory = True, allow_single_file = True),
+        "llvm_profdata": attr.label(mandatory = True, allow_single_file = True),
+        "filter_regexes": attr.label(mandatory = True, allow_single_file = True),
+        "module_bazel": attr.label(mandatory = True, allow_single_file = True),
+        "instrumented_sources_manifest": attr.label(
+            allow_single_file = True,
+            default = None,
+        ),
+        "_reporter": attr.label(
+            default = Label(_REPORTER),
+            executable = True,
+            cfg = "exec",
+        ),
+    },
+)
+
+
 def score_coverage_reporter(
         name,
         llvm_cov,
@@ -170,23 +261,14 @@ def score_coverage_reporter(
                            every file in the manifest that did not appear in
                            the llvm-cov report (i.e. files that no test linked
                            against).
-        **kwargs: Forwarded to the underlying sh_binary (e.g. visibility, tags).
+        **kwargs: Forwarded to the underlying rule (e.g. visibility, tags).
     """
     extra_regex_files = extra_regex_files or []
 
     merged_name = name + "_merged_filter_regexes"
     merged_out = merged_name + ".txt"
-    wrapper_gen_name = name + "_wrapper_gen"
-    wrapper_out = name + ".sh"
-
-    manifest_srcs = [instrumented_sources_manifest] if instrumented_sources_manifest else []
-    manifest_flag_line = (
-        "  --instrumented_sources_manifest=\"$(rlocationpath %s)\" \\\\\n" % instrumented_sources_manifest
-        if instrumented_sources_manifest else ""
-    )
 
     # Concatenate baseline regexes + consumer extras into a single file.
-    # Order is irrelevant for llvm-cov; it treats them as a set.
     native.genrule(
         name = merged_name,
         srcs = [_BASELINE_REGEX] + list(extra_regex_files),
@@ -194,60 +276,12 @@ def score_coverage_reporter(
         cmd = "cat $(SRCS) > $@",
     )
 
-    # Generate the wrapper shell script. It computes the consumer workspace
-    # root from the runfiles location of //:MODULE.bazel and then execs the
-    # shared reporter binary with the merged regex file, workspace root, and
-    # consumer-supplied llvm tool rlocation paths.
-    #
-    # Escaping note: this genrule uses an unquoted heredoc (`<< EOF`) so the
-    # shell would normally expand $... — we escape each `$` we want literal
-    # in the output script as `\\$$`:
-    #   * `$$` is Bazel's escape for a literal `$`.
-    #   * `\` then makes the heredoc treat that `$` as literal.
-    # `$(rlocationpath ...)` IS a Bazel make-variable and is intentionally
-    # expanded at genrule time so the actual rlocation path is baked into
-    # the script.
-    native.genrule(
-        name = wrapper_gen_name,
-        srcs = [
-            ":" + merged_name,
-            "//:MODULE.bazel",
-            llvm_cov,
-            llvm_profdata,
-        ] + manifest_srcs,
-        outs = [wrapper_out],
-        tools = [_REPORTER],
-        cmd = ("""cat > $@ << EOF
-#!/usr/bin/env bash
-set -euo pipefail
-_SELF_DIR="\\$$(cd "\\$$(dirname "\\$$0")" && pwd)"
-_SELF_NAME="\\$$(basename "\\$$0")"
-if [[ -z "\\$${RUNFILES_DIR:-}" || ! -d "\\$${RUNFILES_DIR}" ]]; then
-  if [[ -d "\\$${_SELF_DIR}/\\$${_SELF_NAME}.runfiles" ]]; then
-    export RUNFILES_DIR="\\$${_SELF_DIR}/\\$${_SELF_NAME}.runfiles"
-  fi
-fi
-WORKSPACE_ROOT="\\$$(cd "\\$$(dirname "\\$$(readlink -f "\\$${RUNFILES_DIR}/$(rlocationpath //:MODULE.bazel)")")" && pwd)/"
-exec "\\$${RUNFILES_DIR}/$(rlocationpath %s)" \\\\
-  --filter_regexes="$(rlocationpath :%s)" \\\\
-  --workspace_root="\\$${WORKSPACE_ROOT}" \\\\
-  --llvm_cov="$(rlocationpath %s)" \\\\
-  --llvm_profdata="$(rlocationpath %s)" \\\\
-%s  "\\$$@"
-EOF
-chmod +x $@
-""" % (_REPORTER, merged_name, llvm_cov, llvm_profdata, manifest_flag_line)),
-    )
-
-    sh_binary(
+    _score_coverage_reporter_rule(
         name = name,
-        srcs = [":" + wrapper_gen_name],
-        data = [
-            ":" + merged_name,
-            _REPORTER,
-            "//:MODULE.bazel",
-            llvm_cov,
-            llvm_profdata,
-        ] + manifest_srcs,
+        llvm_cov = llvm_cov,
+        llvm_profdata = llvm_profdata,
+        filter_regexes = ":" + merged_name,
+        module_bazel = "//:MODULE.bazel",
+        instrumented_sources_manifest = instrumented_sources_manifest,
         **kwargs
     )
