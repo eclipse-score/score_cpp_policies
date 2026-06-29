@@ -14,6 +14,7 @@
 module(name = "score_cpp_policies")
 
 bazel_dep(name = "bazel_skylib", version = "1.8.2")
-bazel_dep(name = "platforms", version = "0.0.10")
+bazel_dep(name = "platforms", version = "1.0.0")
 bazel_dep(name = "rules_cc", version = "0.2.17")
 bazel_dep(name = "aspect_rules_lint", version = "2.5.0")
+bazel_dep(name = "bazelrc-preset.bzl", version = "1.9.2")

@@ -11,26 +11,21 @@
 # SPDX-License-Identifier: Apache-2.0
 # *******************************************************************************
 
-exports_files(
-    [
-        ".clang-tidy",
-        "clang_tidy.bazelrc",
-        "defs.bzl",
-        "presets.bzl",
-    ],
+load("@bazelrc-preset.bzl", "bazelrc_preset", "bazelrc_preset_test")
+load("//:presets.bzl", "PRESETS")
+
+bazelrc_preset(
+    name = "preset",
+    extra_presets = PRESETS,
     visibility = ["//visibility:public"],
 )
 
-# Fails if clang_tidy.bazelrc and CLANG_TIDY_PRESETS drift apart.
-sh_test(
-    name = "clang_tidy_bazelrc_equivalence_test",
-    srcs = ["//tools:check_bazelrc_equivalence.py"],
-    args = [
-        "$(location :clang_tidy.bazelrc)",
-        "$(location //tools:preset)",
-    ],
-    data = [
-        ":clang_tidy.bazelrc",
-        "//tools:preset",
-    ],
+bazelrc_preset_test(
+    name = "preset_schema_test",
+    extra_presets = PRESETS,
+)
+
+exports_files(
+    ["check_bazelrc_equivalence.py"],
+    visibility = ["//visibility:public"],
 )
