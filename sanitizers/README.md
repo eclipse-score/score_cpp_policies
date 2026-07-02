@@ -77,6 +77,44 @@ library (`libclang_rt.ubsan_cxx`) is linked, which is required for C++ ABI
 error handlers. GCC does not support this flag but also does not need it (GCC
 links UBSan runtime automatically).
 
+#### Mutually exclusive runtimes (primary enforcement)
+
+TSan uses a different runtime library than ASan/LSan, so those pairs cannot be
+enabled together. This incompatibility is modeled directly in the feature layer
+via `cc_mutually_exclusive_category` targets:
+
+| Category | Members |
+|---|---|
+| `asan_tsan` | `score_asan`, `score_tsan` |
+| `lsan_tsan` | `score_lsan`, `score_tsan` |
+
+When a toolchain enables both features in a mutually exclusive category, Bazel
+fails at **analysis time** with an explicit error, e.g.:
+
+```
+Error in configure_features: Symbol
+@score_cpp_policies//sanitizers/features:asan_tsan is provided by all of
+the following features: score_asan score_tsan
+```
+
+Because this lives in the feature definitions themselves, it protects every
+consumer automatically — no dependency on a separate check target is required.
+
+> **Note — two activation surfaces:** Sanitizers are driven through two
+> independent surfaces that this repo keeps in sync via the `--config=` aliases
+> in `sanitizers.bazelrc`:
+>
+> - **Toolchain features** (`score_*`) — carry the actual compiler/linker flags.
+>   The `mutually_exclusive` categories guard this surface: enabling an invalid
+>   pair fails at analysis time with the error shown above.
+> - **`//sanitizers/flags:*` bool_flags** — drive `config_setting`,
+>   `config_setting_group`, and `target_compatible_with` wiring. The
+>   `//sanitizers/flags:sanitizer_combination_check` genrule (see below) guards
+>   this surface as a **secondary check**.
+>
+> Enable sanitizers through the `--config=` aliases, which set both surfaces
+> together, rather than toggling `--features=score_*` or the bool_flags directly.
+
 ### `constraints/` — `target_compatible_with` aliases
 
 Use these in `BUILD` files to skip tests that are incompatible with a sanitizer:
@@ -145,9 +183,14 @@ The following table shows which flag combinations are **supported**:
 | ✓ | | | ✓ | ❌ **Invalid** | ASan+TSan: incompatible runtime libraries |
 | | | ✓ | ✓ | ❌ **Invalid** | LSan+TSan: TSan has built-in leak detection |
 
-Invalid combinations are caught at **build time** by
-`@score_cpp_policies//sanitizers/flags:sanitizer_combination_check` (the CI
-test suite depends on this target automatically via `tests/BUILD.bazel`).
+Invalid combinations are enforced primarily at the **feature level**: the
+`score_asan`/`score_lsan` and `score_tsan` features declare mutually exclusive
+runtime categories, so enabling an invalid pair fails at Bazel **analysis time**
+(see [`features/`](#features--compilerlinker-feature-definitions) above). As a
+secondary guard for the flag-driven path,
+`@score_cpp_policies//sanitizers/flags:sanitizer_combination_check` also catches
+these at build time (the CI test suite depends on this target automatically via
+`tests/BUILD.bazel`).
 
 ### `wrapper.sh` — Runtime environment loader
 
