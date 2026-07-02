@@ -13,10 +13,54 @@ Planned: clang-format, code coverage policies.
 
 ## Sanitizers
 
-ASan, UBSan, LSan, and TSan as independently configurable Bazel `cc_feature`s, with
-ready-to-use `--config=` aliases (`asan`, `ubsan`, `lsan`, `tsan`, `asan_ubsan_lsan`,
-`tsan_ubsan`), suppression files for known false positives, and `target_compatible_with`
-constraints for skipping or restricting tests under specific sanitizers.
+| Config | Sanitizers | Notes |
+|--------|-----------|-------|
+| `--config=asan` | AddressSanitizer | Memory errors, buffer overflows |
+| `--config=ubsan` | UndefinedBehaviorSanitizer | Integer overflow, null deref |
+| `--config=lsan` | LeakSanitizer | Memory leaks |
+| `--config=tsan` | ThreadSanitizer | Data races, deadlocks — cannot combine with ASan/LSan |
+| `--config=asan_ubsan_lsan` | ASan + UBSan + LSan | **Recommended default for CI** |
+| `--config=tsan_ubsan` | TSan + UBSan | Threading + undefined behavior |
+
+## Sanitizer Combination Compatibility
+
+| Combination | Valid? | Notes |
+|---|---|---|
+| ASan + UBSan | ✅ Yes | Standard — included in `--config=asan_ubsan_lsan` |
+| ASan + LSan | ✅ Yes | Included in `--config=asan_ubsan_lsan` |
+| TSan + UBSan | ✅ Yes | Use `--config=tsan_ubsan` |
+| ASan + TSan | ❌ No | Incompatible runtime libraries (`libasan` vs `libtsan`) |
+| LSan + TSan | ❌ No | TSan has built-in leak detection; enabling both causes runtime conflicts |
+
+Invalid combinations are enforced at three layers, strongest first:
+
+1. **Feature level (primary)** — the sanitizer `cc_feature`s declare
+   `mutually_exclusive` categories (`asan_tsan`, `lsan_tsan`), so
+   enabling `score_asan`+`score_tsan` or `score_lsan`+`score_tsan` through the
+   toolchain fails at **analysis time** with an explicit error
+   (`Symbol ...:asan_tsan is provided by all of the following features: score_asan score_tsan`).
+   This protection is intrinsic to feature resolution and applies to every
+   consumer automatically — no extra build-graph dependency required.
+2. **Bazel build target (secondary)** — the
+   `//sanitizers/flags:sanitizer_combination_check` genrule catches the
+   flag-driven path and prints an actionable message. The CI test suite depends
+   on it automatically.
+3. **Compiler level (backstop)** — Clang emits an explicit error (e.g.
+   `error: invalid argument '-fsanitize=address' combined with '-fsanitize=thread'`).
+
+## Usage
+
+### Add Dependency
+
+```python
+bazel_dep(name = "score_cpp_policies")
+```
+
+### Configure Sanitizers
+
+Copy [`sanitizers/sanitizers.bazelrc`](sanitizers/sanitizers.bazelrc) into your repository's `.bazelrc`.
+
+### Run Tests
 
 ```bash
 bazel test --config=asan_ubsan_lsan //...   # recommended default for CI
