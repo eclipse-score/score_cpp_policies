@@ -32,6 +32,7 @@ from coverage.reporter import (
     _escape_html,
     _find_untested_sources,
     _is_likely_executable,
+    _resolve_workspace_root,
 )
 
 
@@ -224,6 +225,35 @@ class AppendZeroCoverageLcovTest(unittest.TestCase):
     def test_empty_untested_returns_original(self):
         lcov = "SF:/a.cpp\nend_of_record\n"
         self.assertEqual(_append_zero_coverage_lcov(lcov, [], "/ws"), lcov)
+
+
+class ResolveWorkspaceRootTest(unittest.TestCase):
+    def test_plain_path_returns_parent_with_trailing_slash(self):
+        with tempfile.TemporaryDirectory() as ws:
+            module_bazel = Path(ws) / "MODULE.bazel"
+            module_bazel.write_text("")
+            self.assertEqual(_resolve_workspace_root(str(module_bazel)), f"{ws}/")
+
+    def test_resolves_runfiles_symlink_to_real_workspace(self):
+        """Regression test: Rlocation() returns a runfiles-tree path, which is
+        a symlink into the current action's sandbox under linux-sandbox. The
+        parent of that symlink is an ephemeral sandbox path that stops
+        existing once the action finishes; SF: entries and HTML links built
+        from it point nowhere in the extracted report. This must resolve to
+        the real, stable workspace directory instead.
+        """
+        with tempfile.TemporaryDirectory() as real_ws:
+            real_module_bazel = Path(real_ws) / "MODULE.bazel"
+            real_module_bazel.write_text("")
+
+            with tempfile.TemporaryDirectory() as sandbox:
+                linked_module_bazel = Path(sandbox) / "runfiles" / "_main" / "MODULE.bazel"
+                linked_module_bazel.parent.mkdir(parents=True)
+                linked_module_bazel.symlink_to(real_module_bazel)
+
+                self.assertEqual(
+                    _resolve_workspace_root(str(linked_module_bazel)), f"{real_ws}/"
+                )
 
 
 class EscapeHtmlTest(unittest.TestCase):

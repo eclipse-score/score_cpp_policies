@@ -87,7 +87,7 @@ def main() -> None:
     if not module_bazel_resolved:
         print(f"ERROR: MODULE.bazel not found in runfiles via {args.module_bazel}", file=sys.stderr)
         sys.exit(1)
-    workspace_root = str(Path(module_bazel_resolved).parent) + "/"
+    workspace_root = _resolve_workspace_root(module_bazel_resolved)
 
     common_show_args = {
         "llvm_bin_path": llvm_bin_path,
@@ -364,6 +364,21 @@ def create_zip(root: Path, directories: List[Path], output_file: Path) -> None:
                     file_path = Path(dirpath) / filename
                     arcname = file_path.relative_to(root)
                     zf.write(file_path, arcname)
+
+
+def _resolve_workspace_root(module_bazel_resolved: str) -> str:
+    """Return the real workspace root directory for a resolved MODULE.bazel rlocation.
+
+    Rlocation() returns the runfiles-tree path, which is a symlink into the
+    current action's sandbox when running under linux-sandbox. Taking its
+    parent without resolving the symlink yields an ephemeral path buried
+    inside this action's own sandbox (e.g.
+    .../reporter_wrapper.sh.runfiles/_main/) that stops existing once the
+    action finishes - any SF: entry or HTML link built from it points
+    nowhere once the report is extracted and used. Resolving first yields
+    the real, stable workspace directory instead.
+    """
+    return str(Path(module_bazel_resolved).resolve().parent) + "/"
 
 
 def _covered_sources_from_lcov(lcov_text: str) -> Set[str]:
