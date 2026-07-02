@@ -115,7 +115,8 @@ def _instrumented_sources_manifest_impl(ctx):
         for t in ctx.attr.targets
         if InstrumentedSourcesInfo in t
     ]
-    files = depset(transitive = transitive).to_list()
+    sources = depset(transitive = transitive)
+    files = sources.to_list()
 
     # Deduplicate (Starlark has no ordered set type) and sort for determinism.
     paths = sorted({f.short_path: None for f in files}.keys())
@@ -123,7 +124,18 @@ def _instrumented_sources_manifest_impl(ctx):
     out = ctx.actions.declare_file(ctx.label.name + ".txt")
     content = "\n".join(paths) + ("\n" if paths else "")
     ctx.actions.write(output = out, content = content)
-    return [DefaultInfo(files = depset([out]))]
+
+    # The manifest text file only lists paths - the reporter also needs the
+    # actual source files present on disk (as runfiles) so it can read them
+    # under sandboxing. Expose them via default_runfiles so consumers that
+    # depend on this target (e.g. score_coverage_reporter) can merge them in.
+    return [
+        DefaultInfo(
+            files = depset([out]),
+            runfiles = ctx.runfiles(transitive_files = sources),
+        ),
+        InstrumentedSourcesInfo(sources = sources),
+    ]
 
 score_instrumented_sources_manifest = rule(
     implementation = _instrumented_sources_manifest_impl,
@@ -208,6 +220,16 @@ def _score_coverage_reporter_impl(ctx):
     runfiles = ctx.runfiles(files = runfiles_files).merge(
         ctx.attr._reporter[DefaultInfo].default_runfiles,
     )
+
+    # Merge in the actual instrumented source files (not just the manifest
+    # .txt listing their paths) so the reporter can find them on disk when
+    # the coverage-report-generator action runs sandboxed. Without this,
+    # _find_untested_sources() silently drops every manifest entry because
+    # the workspace-relative path does not resolve to an existing file.
+    if ctx.attr.instrumented_sources_manifest:
+        runfiles = runfiles.merge(
+            ctx.attr.instrumented_sources_manifest[DefaultInfo].default_runfiles,
+        )
 
     return [DefaultInfo(executable = wrapper, runfiles = runfiles)]
 

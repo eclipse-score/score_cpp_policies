@@ -29,7 +29,7 @@ import re
 import subprocess
 import sys
 import zipfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import List, Set, Tuple
 from python.runfiles import Runfiles
 
@@ -114,6 +114,7 @@ def main() -> None:
     lcov_text = lcov_result.stdout
 
     # Augment with 0%-coverage entries for files that no test linked against.
+    untested_pairs: List[Tuple[str, str]] = []
     untested_sources: List[str] = []
     if args.instrumented_sources_manifest:
         manifest_path = r.Rlocation(args.instrumented_sources_manifest)
@@ -125,12 +126,13 @@ def main() -> None:
             )
         else:
             covered = _covered_sources_from_lcov(lcov_text)
-            untested_sources = _find_untested_sources(
+            untested_pairs = _find_untested_sources(
                 manifest_path=Path(manifest_path),
                 workspace_root=workspace_root,
                 covered_sources=covered,
                 filter_regexes=sorted(filter_regexes),
             )
+            untested_sources = [abs_path for abs_path, _rel in untested_pairs]
             if untested_sources:
                 print(
                     f"INFO: Augmenting report with {len(untested_sources)} "
@@ -145,11 +147,10 @@ def main() -> None:
         f.write(lcov_text)
 
     # Augment the HTML report with 0%-coverage pages for untested files.
-    if untested_sources:
+    if untested_pairs:
         _augment_html_with_untested(
             html_report_dir=html_report_dir,
-            untested_sources=untested_sources,
-            workspace_root=workspace_root,
+            untested_sources=untested_pairs,
         )
 
     # Generate text summary.
@@ -379,39 +380,51 @@ def _find_untested_sources(
     workspace_root: str,
     covered_sources: Set[str],
     filter_regexes: List[str],
-) -> List[str]:
+) -> List[Tuple[str, str]]:
     """Read the manifest and return entries not present in covered_sources.
+
+    Returns a list of (resolved_absolute_path, manifest_relative_path) pairs,
+    sorted by absolute path. The manifest-relative path is kept alongside the
+    resolved path so callers can display a clean workspace-relative name
+    instead of the fully-resolved on-disk path (see _augment_html_with_untested).
 
     Manifest entries are workspace-relative paths. Filter regexes from the
     consumer are applied so that the same exclusions that affect llvm-cov also
     affect the synthesized entries. Entries that do not resolve to an existing
     file on disk are dropped silently (typically generated files or stale
     manifest content).
+
+    Path traversal is rejected based on the manifest-relative path itself
+    (rejecting ".." components), not by resolving symlinks and checking
+    containment: manifest entries are runfiles, which are frequently symlinks
+    that legitimately resolve outside workspace_root (e.g. to the real
+    on-disk source tree when Bazel runs this sandboxed). Resolving first and
+    then checking containment would silently drop every such file.
     """
     ws = Path(workspace_root)
     compiled_filters = [re.compile(r) for r in filter_regexes if r]
 
-    ws_resolved = ws.resolve()
-    untested: List[str] = []
+    untested: List[Tuple[str, str]] = []
     seen: Set[str] = set()
     raw = manifest_path.read_text(encoding="utf-8")
     for entry in raw.splitlines():
         rel = entry.strip()
         if not rel:
             continue
-        abs_path = (ws / rel).resolve()
-        if not abs_path.is_relative_to(ws_resolved):
+        rel_path = PurePosixPath(rel)
+        if rel_path.is_absolute() or ".." in rel_path.parts:
             continue
+        abs_path = ws / rel
         if not abs_path.exists() or not abs_path.is_file():
             continue
-        abs_str = str(abs_path)
+        abs_str = str(abs_path.resolve())
         if abs_str in covered_sources or abs_str in seen:
             continue
         if any(rx.search(abs_str) or rx.search(rel) for rx in compiled_filters):
             continue
         seen.add(abs_str)
-        untested.append(abs_str)
-    return sorted(untested)
+        untested.append((abs_str, rel))
+    return sorted(untested, key=lambda pair: pair[0])
 
 
 _NON_EXECUTABLE_RE = re.compile(
@@ -539,8 +552,7 @@ line is reported as uncovered.
 
 def _augment_html_with_untested(
     html_report_dir: Path,
-    untested_sources: List[str],
-    workspace_root: str,
+    untested_sources: List[Tuple[str, str]],
 ) -> None:
     """Create per-file HTML pages for untested sources and link them from index.
 
@@ -557,8 +569,7 @@ def _augment_html_with_untested(
     output_root = coverage_subdir if coverage_subdir.exists() else html_report_dir
 
     entries: List[Tuple[str, str, int]] = []  # (rel_source, href, num_lines)
-    for abs_path in untested_sources:
-        rel_source = os.path.relpath(abs_path, workspace_root)
+    for abs_path, rel_source in untested_sources:
         # Mirror llvm-cov: per-source HTML lives at <output_root>/<abs path>.html
         # Strip the leading "/" so that the path joins under output_root.
         target_html = output_root / (abs_path.lstrip("/") + ".html")

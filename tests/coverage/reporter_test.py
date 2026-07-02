@@ -150,7 +150,7 @@ class FindUntestedSourcesTest(unittest.TestCase):
             covered = {str(src_a.resolve())}
             result = _find_untested_sources(manifest, ws, covered, [])
             self.assertEqual(len(result), 1)
-            self.assertIn(str(src_b.resolve()), result)
+            self.assertEqual(result[0], (str(src_b.resolve()), "src/b.cpp"))
 
     def test_respects_filter_regexes(self):
         with tempfile.TemporaryDirectory() as ws:
@@ -177,6 +177,28 @@ class FindUntestedSourcesTest(unittest.TestCase):
                 self.assertEqual(result, [])
             finally:
                 outside.unlink(missing_ok=True)
+
+    def test_finds_sources_reached_only_through_symlinks(self):
+        """Regression test: manifest entries are often runfiles symlinks that
+        resolve outside workspace_root (e.g. to the real on-disk source tree
+        when Bazel runs the reporter sandboxed). These must still be found -
+        see the docstring on _find_untested_sources for the historical bug
+        this guards against.
+        """
+        with tempfile.TemporaryDirectory() as real_dir:
+            real_src = Path(real_dir) / "real.cpp"
+            real_src.write_text("int real() { return 1; }\n")
+
+            with tempfile.TemporaryDirectory() as ws:
+                linked_src = Path(ws) / "src" / "linked.cpp"
+                linked_src.parent.mkdir(parents=True)
+                linked_src.symlink_to(real_src)
+
+                manifest = Path(ws) / "manifest.txt"
+                manifest.write_text("src/linked.cpp\n")
+
+                result = _find_untested_sources(manifest, ws, set(), [])
+                self.assertEqual(result, [(str(real_src.resolve()), "src/linked.cpp")])
 
 
 class AppendZeroCoverageLcovTest(unittest.TestCase):
