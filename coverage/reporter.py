@@ -151,6 +151,7 @@ def main() -> None:
         _augment_html_with_untested(
             html_report_dir=html_report_dir,
             untested_sources=untested_pairs,
+            lcov_text=lcov_text,
         )
 
     # Generate text summary.
@@ -163,7 +164,7 @@ def main() -> None:
     )
     summary_text = summary.stdout
     if untested_sources:
-        summary_text = _augment_text_summary(summary_text, untested_sources)
+        summary_text = _augment_text_summary(summary_text, untested_sources, lcov_text)
     with open(text_report_dir / "summary.txt", "w", encoding="utf-8") as f:
         f.write(summary_text)
     print(summary_text, file=sys.stderr)
@@ -390,6 +391,23 @@ def _covered_sources_from_lcov(lcov_text: str) -> Set[str]:
     return sources
 
 
+def _lcov_totals(lcov_text: str) -> Tuple[int, int]:
+    """Return (total_LH, total_LF) summed across every record in an LCOV report.
+
+    Intended to be called on the final, already-augmented LCOV text (real
+    llvm-cov records plus the synthetic 0%-coverage records for untested
+    files), so the result reflects combined line coverage across both.
+    """
+    total_lh = 0
+    total_lf = 0
+    for line in lcov_text.splitlines():
+        if line.startswith("LH:"):
+            total_lh += int(line[3:].strip())
+        elif line.startswith("LF:"):
+            total_lf += int(line[3:].strip())
+    return total_lh, total_lf
+
+
 def _find_untested_sources(
     manifest_path: Path,
     workspace_root: str,
@@ -515,7 +533,7 @@ def _append_zero_coverage_lcov(
     return lcov_text + sep + "".join(blocks)
 
 
-def _augment_text_summary(summary_text: str, untested_sources: List[str]) -> str:
+def _augment_text_summary(summary_text: str, untested_sources: List[str], lcov_text: str) -> str:
     """Append a banner to the llvm-cov report summary for untested files.
 
     The TOTALS line from llvm-cov is left untouched because the heuristic
@@ -525,17 +543,26 @@ def _augment_text_summary(summary_text: str, untested_sources: List[str]) -> str
     false sense of precision. Instead we append a clearly-labelled banner
     so that CI consumers and reviewers see the gap without mistaking an
     estimate for an exact measurement.
+
+    The combined percentage below is derived from lcov_text (the final,
+    already-augmented LCOV report), so it shares the same estimate for the
+    untested files' totals as the rest of the banner.
     """
     extra_lines_found = 0
     for abs_path in untested_sources:
         _, lf = _count_instrumentable_lines(abs_path)
         extra_lines_found += lf
 
+    total_lh, total_lf = _lcov_totals(lcov_text)
+    combined_pct = (100.0 * total_lh / total_lf) if total_lf else 0.0
+
     banner = (
         f"\n[score-coverage] WARNING: {len(untested_sources)} source file(s) "
         f"not linked into any test (~{extra_lines_found} instrumentable lines, "
         f"estimated via heuristic). These files are absent from the TOTALS above "
         f"and contribute 0% coverage. See lcov.dat and the HTML report for details.\n"
+        f"[score-coverage] Estimated combined line coverage (incl. untested "
+        f"files): ~{combined_pct:.2f}% ({total_lh}/{total_lf} lines).\n"
     )
     return summary_text + banner
 
@@ -568,6 +595,7 @@ line is reported as uncovered.
 def _augment_html_with_untested(
     html_report_dir: Path,
     untested_sources: List[Tuple[str, str]],
+    lcov_text: str,
 ) -> None:
     """Create per-file HTML pages for untested sources and link them from index.
 
@@ -616,7 +644,9 @@ def _augment_html_with_untested(
     if not entries:
         return
 
-    _inject_untested_section_into_index(html_report_dir / "index.html", entries)
+    total_lh, total_lf = _lcov_totals(lcov_text)
+    combined_pct = (100.0 * total_lh / total_lf) if total_lf else 0.0
+    _inject_untested_section_into_index(html_report_dir / "index.html", entries, combined_pct)
 
 
 def _escape_html(text: str) -> str:
@@ -630,14 +660,14 @@ def _escape_html(text: str) -> str:
 
 
 def _inject_untested_section_into_index(
-    index_file: Path, entries: List[Tuple[str, str, int]]
+    index_file: Path, entries: List[Tuple[str, str, int]], combined_pct: float
 ) -> None:
     """Insert a top-banner and detail table for untested files into the index.
 
     The banner is injected right after <body> so it is the first thing a
-    reviewer sees. It explicitly labels the line count as a heuristic
-    estimate to avoid false precision. The detail table with per-file links
-    is appended before </body>.
+    reviewer sees. It explicitly labels the line count and combined
+    percentage as heuristic estimates to avoid false precision. The detail
+    table with per-file links is appended before </body>.
     """
     if not index_file.exists():
         return
@@ -653,7 +683,9 @@ def _inject_untested_section_into_index(
         f"any test</strong> (~{total_estimated_lines} instrumentable lines, "
         "estimated via heuristic). The coverage percentages above do "
         "<em>not</em> include these files. See the "
-        "<a href='#untested-files'>detail table</a> below."
+        "<a href='#untested-files'>detail table</a> below.<br>"
+        f"Estimated combined line coverage (incl. untested files): "
+        f"~{combined_pct:.2f}%."
         "</div>"
     )
 

@@ -156,7 +156,11 @@ score_coverage_reporter(
 Anything in the manifest that the llvm-cov export does not already cover
 (and that survives the configured `--ignore-filename-regex` set) is added
 as a synthetic 0%-coverage record to the LCOV file and gets a per-file
-HTML page plus a "Not Linked Into Tests" section on the report index.
+HTML page plus a "Not Linked Into Tests" section on the report index. The
+banner also reports an estimated combined line coverage percentage across
+tested and untested files, clearly labelled as an estimate since the
+untested files' line counts come from a heuristic, not real instrumentation
+data.
 
 ## 6. (Optional) Set up justifications
 

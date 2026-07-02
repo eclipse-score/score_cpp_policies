@@ -32,6 +32,7 @@ from coverage.reporter import (
     _escape_html,
     _find_untested_sources,
     _is_likely_executable,
+    _lcov_totals,
     _resolve_workspace_root,
 )
 
@@ -134,6 +135,27 @@ class CoveredSourcesFromLcovTest(unittest.TestCase):
 
     def test_empty_lcov(self):
         self.assertEqual(_covered_sources_from_lcov(""), set())
+
+
+class LcovTotalsTest(unittest.TestCase):
+    def test_sums_lh_and_lf_across_records(self):
+        lcov = textwrap.dedent("""\
+            SF:/workspace/src/a.cpp
+            DA:1,5
+            DA:2,0
+            LF:2
+            LH:1
+            end_of_record
+            SF:/workspace/src/b.cpp
+            DA:1,3
+            LF:1
+            LH:1
+            end_of_record
+        """)
+        self.assertEqual(_lcov_totals(lcov), (2, 3))
+
+    def test_empty_lcov(self):
+        self.assertEqual(_lcov_totals(""), (0, 0))
 
 
 class FindUntestedSourcesTest(unittest.TestCase):
@@ -276,7 +298,8 @@ class AugmentTextSummaryTest(unittest.TestCase):
                 ---                           ---                                ---                        ---
                 TOTAL                               2             0       100.00%           10                0       100.00%           4                0       100.00%
             """)
-            result = _augment_text_summary(summary, [str(src)])
+            lcov_text = "SF:/other.cpp\nDA:1,5\nLF:10\nLH:10\nend_of_record\n"
+            result = _augment_text_summary(summary, [str(src)], lcov_text)
             self.assertIn("[score-coverage]", result)
             self.assertIn("WARNING", result)
             self.assertIn("estimated via heuristic", result)
@@ -289,9 +312,26 @@ class AugmentTextSummaryTest(unittest.TestCase):
             src.write_text("int foo() { return 1; }\n")
 
             summary = "TOTAL  2  0  100.00%  10  0  100.00%\n"
-            result = _augment_text_summary(summary, [str(src)])
+            lcov_text = "SF:/other.cpp\nDA:1,5\nLF:10\nLH:10\nend_of_record\n"
+            result = _augment_text_summary(summary, [str(src)], lcov_text)
             self.assertIn("1 source file(s)", result)
             self.assertIn("~1 instrumentable lines", result)
+
+    def test_banner_contains_combined_percentage_from_lcov_totals(self):
+        with tempfile.TemporaryDirectory() as ws:
+            src = Path(ws) / "untested.cpp"
+            src.write_text("int foo() { return 1; }\n")
+
+            summary = "TOTAL  2  0  100.00%  10  0  100.00%\n"
+            # Combined: 8 lines hit out of (8 real + 2 synthetic) = 80.00%.
+            lcov_text = (
+                "SF:/other.cpp\nDA:1,5\nLF:8\nLH:8\nend_of_record\n"
+                f"SF:{src}\nDA:1,0\nDA:2,0\nLF:2\nLH:0\nend_of_record\n"
+            )
+            result = _augment_text_summary(summary, [str(src)], lcov_text)
+            self.assertIn("Estimated combined line coverage", result)
+            self.assertIn("~80.00%", result)
+            self.assertIn("(8/10 lines)", result)
 
 
 if __name__ == "__main__":
