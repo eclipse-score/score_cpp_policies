@@ -33,6 +33,7 @@ from coverage.reporter import (
     _find_untested_sources,
     _is_likely_executable,
     _lcov_totals,
+    _render_untested_rows,
     _resolve_workspace_root,
 )
 
@@ -285,6 +286,38 @@ class EscapeHtmlTest(unittest.TestCase):
         self.assertIn("&gt;", _escape_html("<tag>"))
         self.assertIn("&#39;", _escape_html("it's"))
         self.assertIn("&quot;", _escape_html('"quoted"'))
+
+
+class RenderUntestedRowsTest(unittest.TestCase):
+    """Regression test for synthetic untested-file pages looking unstyled.
+
+    llvm-cov's own per-source pages render one <tr> per line with a
+    'line-number' and 'uncovered-line'/'covered-line' cell, which is what
+    style.css actually has rules for. The original implementation dumped the
+    whole file into one <pre> block, which loaded style.css successfully but
+    used none of its classes - so the page looked broken/unstyled next to a
+    genuine llvm-cov page. This locks in the line-per-row structure instead.
+    """
+
+    def test_one_row_per_line_with_line_number_and_uncovered_class(self):
+        rows = _render_untested_rows("int foo() {\n    return 1;\n}\n")
+        self.assertEqual(rows.count("<tr>"), 3)
+        self.assertIn("class='line-number'", rows)
+        self.assertIn("class='uncovered-line'", rows)
+        self.assertIn(">1<", rows)
+        self.assertIn(">2<", rows)
+        self.assertIn(">3<", rows)
+
+    def test_escapes_source_content(self):
+        rows = _render_untested_rows("a < b && c > d\n")
+        self.assertIn("&lt;", rows)
+        self.assertIn("&gt;", rows)
+        self.assertIn("&amp;", rows)
+
+    def test_empty_file_renders_placeholder_row(self):
+        rows = _render_untested_rows("")
+        self.assertIn("(empty file)", rows)
+        self.assertEqual(rows.count("<tr>"), 1)
 
 
 class AugmentTextSummaryTest(unittest.TestCase):

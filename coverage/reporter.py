@@ -572,24 +572,45 @@ _UNTESTED_HTML_TEMPLATE = """<!doctype html>
 <head>
   <meta charset='UTF-8'>
   <link rel='stylesheet' type='text/css' href='{css_path}'>
+  <script src='{js_path}'></script>
   <title>{title}</title>
 </head>
 <body>
 <h2>Coverage Report</h2>
-<h4>{title}</h4>
 <p style='background:#fdd;padding:10px;border-radius:5px;border:1px solid #c66;'>
 <strong>Not linked into any test.</strong> This source file is reachable from
 the configured coverage targets but no test binary instruments it, so every
 line is reported as uncovered.
 </p>
-<table>
-<tr><td class='code'><pre>
-{body}
-</pre></td></tr>
-</table>
+<div class='centered'><table>
+<div class='source-name-title'><pre>{title}</pre></div>
+<tr><td><pre>Line</pre></td><td><pre>Count</pre></td><td><pre>Source</pre></td></tr>
+{rows}
+</table></div>
 </body>
 </html>
 """
+
+
+def _render_untested_rows(source_text: str) -> str:
+    """Render one llvm-cov-style table row per source line, all marked uncovered.
+
+    Mirrors llvm-cov's real per-source HTML (line-number gutter + a
+    `td.uncovered-line` status cell) so these synthetic pages pick up the same
+    `style.css` rules and `control.js` keyboard navigation as genuine llvm-cov
+    pages, instead of rendering as an unstyled wall of text.
+    """
+    if not source_text:
+        return "<tr><td class='code'><pre>(empty file)</pre></td></tr>"
+    lines = source_text.split("\n")
+    if source_text.endswith("\n"):
+        lines = lines[:-1]
+    return "\n".join(
+        f"<tr><td class='line-number'><a name='L{i}' href='#L{i}'><pre>{i}</pre></a></td>"
+        f"<td class='uncovered-line'></td>"
+        f"<td class='code'><pre>{_escape_html(line)}</pre></td></tr>"
+        for i, line in enumerate(lines, start=1)
+    )
 
 
 def _augment_html_with_untested(
@@ -599,11 +620,11 @@ def _augment_html_with_untested(
 ) -> None:
     """Create per-file HTML pages for untested sources and link them from index.
 
-    The pages are intentionally minimal: llvm-cov's per-source HTML format is
-    not easily reproducible without the full coverage mapping, so we render a
-    plain source dump with a banner that explains the file was not exercised.
-    The index page gets a new "Not Linked Into Tests" section listing the
-    files at 0% coverage so the gap is visible to reviewers.
+    The pages reuse llvm-cov's own line-number/uncovered-line row structure
+    (see `_render_untested_rows`) so they render with the same style.css rules
+    as genuine llvm-cov pages, with a banner explaining the file was not
+    exercised. The index page gets a new "Not Linked Into Tests" section
+    listing the files at 0% coverage so the gap is visible to reviewers.
     """
     if not html_report_dir.exists():
         return
@@ -629,12 +650,14 @@ def _augment_html_with_untested(
 
         rel_to_root = os.path.relpath(html_report_dir, target_html.parent)
         css_path = (Path(rel_to_root) / "style.css").as_posix()
-        body = _escape_html(source_text) or "(empty file)"
+        js_path = (Path(rel_to_root) / "control.js").as_posix()
+        rows = _render_untested_rows(source_text)
         html = (
             _UNTESTED_HTML_TEMPLATE
             .replace("{css_path}", css_path)
+            .replace("{js_path}", js_path)
             .replace("{title}", _escape_html(rel_source))
-            .replace("{body}", body)
+            .replace("{rows}", rows)
         )
         target_html.write_text(html, encoding="utf-8")
 
