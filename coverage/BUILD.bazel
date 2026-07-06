@@ -30,9 +30,8 @@ exports_files([
 # and packages everything (profdata + object-file list) into a zip that the
 # reporter later aggregates.
 #
-# llvm-profdata is preferably supplied by label via the score_coverage_merger
-# wrapper (see defs.bzl); consumers who still point --coverage_output_generator
-# directly at :merger fall back to the ambient LLVM_PROFDATA env var.
+# llvm-profdata is supplied by label via the score_coverage_merger wrapper
+# (see defs.bzl), which passes --llvm_profdata as an absolute path.
 # ---------------------------------------------------------------------------
 py_library(
     name = "merger_lib",

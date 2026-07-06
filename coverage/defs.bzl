@@ -312,12 +312,12 @@ def score_coverage_reporter(
 # ---------------------------------------------------------------------------
 # Per-test coverage merger wrapper.
 #
-# :merger falls back to the ambient LLVM_PROFDATA environment variable when
-# no --llvm_profdata rlocation arg is given, but nothing in this repo (or a
-# typical consumer setup) actually sets that variable - it silently breaks
-# outside of an environment that happens to export it. score_coverage_merger
-# generates a thin wrapper (the same pattern as score_coverage_reporter) that
-# supplies llvm-profdata by label instead, so the merger step is hermetic.
+# :merger requires --llvm_profdata to be passed explicitly - nothing in this
+# repo (or a typical consumer setup) sets an ambient LLVM_PROFDATA env var, so
+# relying on one would silently break outside of an environment that happens
+# to export it. score_coverage_merger generates a thin wrapper (the same
+# pattern as score_coverage_reporter) that supplies llvm-profdata by label
+# instead, so the merger step is hermetic.
 # ---------------------------------------------------------------------------
 
 _MERGER_WRAPPER_TEMPLATE = """\
@@ -375,9 +375,9 @@ _score_coverage_merger_rule = rule(
 def score_coverage_merger(name, llvm_profdata, **kwargs):
     """Create a Bazel --coverage_output_generator wrapper for this repository.
 
-    Wires llvm-profdata into the per-test merger step by label instead of
-    relying on the ambient LLVM_PROFDATA environment variable, which nothing
-    sets by default. Reference it from your coverage.bazelrc:
+    Wires llvm-profdata into the per-test merger step by label instead of an
+    ambient LLVM_PROFDATA environment variable, which nothing sets by default.
+    Reference it from your coverage.bazelrc:
 
         coverage --coverage_output_generator=//tools/coverage:merger_wrapper
 

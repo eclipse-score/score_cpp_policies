@@ -259,9 +259,8 @@ bazel run @score_cpp_policies//coverage:generate_coverage_html -- \
 - **`llvm-cov not found in runfiles`** — the macro arg `llvm_cov` must
   point to a real binary target in your repo's repo mapping; the
   default `@llvm_toolchain//:llvm-cov` requires `use_repo(llvm, "llvm_toolchain")`.
-- **`llvm-profdata not found` / coverage collection fails outright** — you
-  are pointing `--coverage_output_generator` directly at
+- **`the following arguments are required: --llvm_profdata`** — you are
+  pointing `--coverage_output_generator` directly at
   `@score_cpp_policies//coverage:merger` instead of a `score_coverage_merger`
-  wrapper. Nothing sets the `LLVM_PROFDATA` env var it falls back to by
-  default — create a `merger_wrapper` (step 4) and point
+  wrapper. Create a `merger_wrapper` (step 4) and point
   `--coverage_output_generator` at it instead.

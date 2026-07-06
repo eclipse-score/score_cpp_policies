@@ -23,6 +23,7 @@ Expected Bazel interface (from collect_coverage.sh):
     --output_file=<path>              Where to write the output (zip)
     --source_file_manifest=<path>     File listing instrumented sources and object files
     --filter_sources=<regex>          Source path regexes to exclude (repeatable)
+    --llvm_profdata=<path>            Absolute path to the llvm-profdata binary
     [--sources_to_replace_file=<path>] Optional source mapping file
 """
 
@@ -33,7 +34,7 @@ import subprocess
 import sys
 import zipfile
 from pathlib import Path
-from typing import List, Optional, Set
+from typing import List, Set
 
 
 def main() -> None:
@@ -58,9 +59,8 @@ def main() -> None:
     profdata_dir.mkdir(exist_ok=True)
     profdata_file = profdata_dir / "target.profdata"
 
-    llvm_profdata = _resolve_llvm_profdata(args.llvm_profdata)
     run_command([
-        llvm_profdata, "merge",
+        args.llvm_profdata, "merge",
         "--sparse",
         "--output", str(profdata_file),
     ] + [str(f) for f in profraw_files])
@@ -88,31 +88,6 @@ def main() -> None:
 
     target = os.environ.get("TEST_TARGET", "unknown")
     print(f"INFO: Coverage merger completed for '{target}'", file=sys.stderr)
-
-
-def _resolve_llvm_profdata(explicit_path: Optional[str]) -> str:
-    """Return the llvm-profdata binary path to use for merging.
-
-    Prefers the --llvm_profdata path (an absolute path resolved by
-    score_coverage_merger's generated bash wrapper via its own runfiles
-    directory) over the ambient LLVM_PROFDATA environment variable. The env
-    var fallback keeps consumers who still point --coverage_output_generator
-    directly at :merger working, but it is not hermetic - nothing in this
-    repo sets it, so it silently breaks for any consumer whose environment
-    doesn't happen to export it.
-    """
-    if explicit_path:
-        return explicit_path
-    llvm_profdata = os.environ.get("LLVM_PROFDATA")
-    if not llvm_profdata:
-        print(
-            "ERROR: llvm-profdata not found. Point --coverage_output_generator at "
-            "a score_coverage_merger wrapper (recommended) so llvm-profdata is "
-            "supplied by label, or set LLVM_PROFDATA yourself.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    return llvm_profdata
 
 
 def cleanup_dangling_symlinks(directory: Path) -> None:
@@ -208,7 +183,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--source_file_manifest", type=Path, required=True)
     parser.add_argument("--filter_sources", action="append", default=[])
     parser.add_argument("--sources_to_replace_file", type=str, default=None)
-    parser.add_argument("--llvm_profdata", type=str, default=None,
+    parser.add_argument("--llvm_profdata", type=str, required=True,
                         help="Absolute path to the llvm-profdata binary, supplied "
                              "by score_coverage_merger's generated wrapper")
     return parser.parse_args()
