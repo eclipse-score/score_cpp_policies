@@ -169,8 +169,17 @@ def _rlocation_path(ctx, file):
 _WRAPPER_TEMPLATE = """\
 #!/usr/bin/env bash
 set -euo pipefail
-if [[ -z "${RUNFILES_DIR:-}" || ! -d "${RUNFILES_DIR}" ]]; then
-  RUNFILES_DIR="$(cd "$(dirname "$0")" && pwd)/$(basename "$0").runfiles"
+# If this wrapper is ever invoked as a nested tool from inside another
+# action (as score_coverage_merger's wrapper is), the ambient RUNFILES_DIR
+# would point at that action's own runfiles, not this wrapper's. Always
+# prefer this script's own sibling runfiles directory and only fall back to
+# the ambient value if that self-derived directory doesn't exist.
+SELF_RUNFILES_DIR="$(cd "$(dirname "$0")" && pwd)/$(basename "$0").runfiles"
+if [[ -d "${SELF_RUNFILES_DIR}" ]]; then
+  RUNFILES_DIR="${SELF_RUNFILES_DIR}"
+elif [[ -z "${RUNFILES_DIR:-}" || ! -d "${RUNFILES_DIR}" ]]; then
+  echo "ERROR: could not locate reporter_wrapper's runfiles directory" >&2
+  exit 1
 fi
 exec "${RUNFILES_DIR}/%s" \\
   --filter_regexes="%s" \\
