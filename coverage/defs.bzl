@@ -47,6 +47,7 @@ and from the consumer .bazelrc:
 
 _BASELINE_REGEX = "@score_cpp_policies//coverage:filter_regexes.txt"
 _REPORTER = "@score_cpp_policies//coverage:reporter"
+_MERGER = "@score_cpp_policies//coverage:merger"
 
 # ---------------------------------------------------------------------------
 # Instrumented sources collection.
@@ -305,5 +306,89 @@ def score_coverage_reporter(
         filter_regexes = ":" + merged_name,
         module_bazel = "//:MODULE.bazel",
         instrumented_sources_manifest = instrumented_sources_manifest,
+        **kwargs
+    )
+
+# ---------------------------------------------------------------------------
+# Per-test coverage merger wrapper.
+#
+# :merger falls back to the ambient LLVM_PROFDATA environment variable when
+# no --llvm_profdata rlocation arg is given, but nothing in this repo (or a
+# typical consumer setup) actually sets that variable - it silently breaks
+# outside of an environment that happens to export it. score_coverage_merger
+# generates a thin wrapper (the same pattern as score_coverage_reporter) that
+# supplies llvm-profdata by label instead, so the merger step is hermetic.
+# ---------------------------------------------------------------------------
+
+_MERGER_WRAPPER_TEMPLATE = """\
+#!/usr/bin/env bash
+set -euo pipefail
+# Bazel invokes --coverage_output_generator as a tool from inside another
+# action (the per-test coverage-collection action), which already has its
+# OWN RUNFILES_DIR set in the environment (pointing at the *test's* runfiles,
+# not this wrapper's). Trusting an inherited RUNFILES_DIR here would resolve
+# paths against the wrong tree, so always prefer this script's own sibling
+# runfiles directory and only fall back to the ambient value if that
+# self-derived directory doesn't exist.
+SELF_RUNFILES_DIR="$(cd "$(dirname "$0")" && pwd)/$(basename "$0").runfiles"
+if [[ -d "${SELF_RUNFILES_DIR}" ]]; then
+  RUNFILES_DIR="${SELF_RUNFILES_DIR}"
+elif [[ -z "${RUNFILES_DIR:-}" || ! -d "${RUNFILES_DIR}" ]]; then
+  echo "ERROR: could not locate merger_wrapper's runfiles directory" >&2
+  exit 1
+fi
+exec "${RUNFILES_DIR}/%s" \\
+  --llvm_profdata="${RUNFILES_DIR}/%s" \\
+  "$@"
+"""
+
+def _score_coverage_merger_impl(ctx):
+    merger_rloc = _rlocation_path(ctx, ctx.executable._merger)
+    llvm_profdata_rloc = _rlocation_path(ctx, ctx.file.llvm_profdata)
+
+    wrapper = ctx.actions.declare_file(ctx.label.name + ".sh")
+    ctx.actions.write(
+        output = wrapper,
+        content = _MERGER_WRAPPER_TEMPLATE % (merger_rloc, llvm_profdata_rloc),
+        is_executable = True,
+    )
+
+    runfiles = ctx.runfiles(files = [ctx.file.llvm_profdata]).merge(
+        ctx.attr._merger[DefaultInfo].default_runfiles,
+    )
+
+    return [DefaultInfo(executable = wrapper, runfiles = runfiles)]
+
+_score_coverage_merger_rule = rule(
+    implementation = _score_coverage_merger_impl,
+    executable = True,
+    attrs = {
+        "llvm_profdata": attr.label(mandatory = True, allow_single_file = True),
+        "_merger": attr.label(
+            default = Label(_MERGER),
+            executable = True,
+            cfg = "exec",
+        ),
+    },
+)
+
+def score_coverage_merger(name, llvm_profdata, **kwargs):
+    """Create a Bazel --coverage_output_generator wrapper for this repository.
+
+    Wires llvm-profdata into the per-test merger step by label instead of
+    relying on the ambient LLVM_PROFDATA environment variable, which nothing
+    sets by default. Reference it from your coverage.bazelrc:
+
+        coverage --coverage_output_generator=//tools/coverage:merger_wrapper
+
+    Args:
+        name: The target name.
+        llvm_profdata: Label of the llvm-profdata binary (typically
+                       "@llvm_toolchain//:llvm-profdata").
+        **kwargs: Forwarded to the underlying rule (e.g. visibility, tags).
+    """
+    _score_coverage_merger_rule(
+        name = name,
+        llvm_profdata = llvm_profdata,
         **kwargs
     )

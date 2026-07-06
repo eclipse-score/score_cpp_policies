@@ -29,7 +29,17 @@ exports_files([
 # profraw files + the source-file manifest, merges them with llvm-profdata
 # and packages everything (profdata + object-file list) into a zip that the
 # reporter later aggregates.
+#
+# llvm-profdata is preferably supplied by label via the score_coverage_merger
+# wrapper (see defs.bzl); consumers who still point --coverage_output_generator
+# directly at :merger fall back to the ambient LLVM_PROFDATA env var.
 # ---------------------------------------------------------------------------
+py_library(
+    name = "merger_lib",
+    srcs = ["merger.py"],
+    imports = [".."],
+)
+
 py_binary(
     name = "merger",
     srcs = ["merger.py"],

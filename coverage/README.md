@@ -5,11 +5,12 @@ built on `llvm-cov` source-based coverage. This package provides:
 
 | Component | What it does |
 |---|---|
-| `:merger` (py_binary) | Per-test profraw → profdata + object-file packaging. Wired as `--coverage_output_generator` by `coverage.bazelrc`. |
+| `:merger` (py_binary) | Per-test profraw → profdata + object-file packaging. Invoked by the per-consumer wrapper produced by `score_coverage_merger`. |
 | `:reporter` (py_binary) | Final aggregation: profdata merge + llvm-cov HTML / LCOV / text. Invoked by the per-consumer wrapper produced by `score_coverage_reporter`. |
 | `:justify` (py_binary) | Reads a YAML database + `COV_JUSTIFIED` source markers and emits a manifest of justified lines/branches. |
 | `:effective_coverage` (py_binary) | Post-processes the llvm-cov HTML to highlight justified lines and compute effective coverage. |
 | `:generate_coverage_html` (sh_binary) | One-shot driver: unzip Bazel coverage output, run justification, optional CI archive. |
+| `defs.bzl :: score_coverage_merger` | Macro consumers call to wire llvm-profdata into the per-test merger by label instead of an ambient env var. |
 | `defs.bzl :: score_coverage_reporter` | Macro consumers call to wire the report generator with their own filter regex extensions and llvm tools. |
 | `coverage.bazelrc` | Generic `coverage` flags consumers import from their own `.bazelrc`. |
 | `filter_regexes.txt` | Baseline `--ignore-filename-regex` set (tests, mocks, fakes, benchmarks, external/). |
@@ -82,9 +83,27 @@ coverage --instrumentation_filter="^//<your_top_level_package>[/:]"
 > 💡 Use `[/:]` (not just `/`) so the top-level package itself
 > (e.g. `//mymod:lib`) is included, not just subpackages.
 
-## 4. Create your reporter wrapper
+## 4. Create your merger wrapper
 
-Create a small BUILD file (e.g. `tools/coverage/BUILD.bazel`):
+`:merger` (the per-test `--coverage_output_generator`) needs an llvm-profdata
+binary to merge `.profraw` files. Wire it in by label instead of relying on
+an ambient `LLVM_PROFDATA` environment variable — nothing sets that variable
+by default, so skipping this step fails the coverage run outright:
+
+```python
+# tools/coverage/BUILD.bazel
+load("@score_cpp_policies//coverage:defs.bzl", "score_coverage_merger")
+
+score_coverage_merger(
+    name = "merger_wrapper",
+    llvm_profdata = "@llvm_toolchain//:llvm-profdata",
+    visibility = ["//visibility:public"],
+)
+```
+
+## 5. Create your reporter wrapper
+
+Add to the same BUILD file:
 
 ```python
 load("@score_cpp_policies//coverage:defs.bzl", "score_coverage_reporter")
@@ -109,14 +128,15 @@ Example `tools/coverage/coverage_filter_regexes.txt`:
 .*/proto/.*\.pb\.(h|cc)$
 ```
 
-## 5. Point Bazel at your wrapper
+## 6. Point Bazel at your wrappers
 
 ```bazelrc
 # .bazelrc
+coverage --coverage_output_generator=//tools/coverage:merger_wrapper
 coverage --coverage_report_generator=//tools/coverage:reporter_wrapper
 ```
 
-## 5a. (Optional) Surface untested files at 0% coverage
+## 6a. (Optional) Surface untested files at 0% coverage
 
 `llvm-cov` only reports source files that are linked into at least one
 exercised test. Source files that ship in the project but no test pulls in
@@ -162,7 +182,7 @@ tested and untested files, clearly labelled as an estimate since the
 untested files' line counts come from a heuristic, not real instrumentation
 data.
 
-## 6. (Optional) Set up justifications
+## 7. (Optional) Set up justifications
 
 Create `tools/coverage/coverage_justifications.yaml`:
 
@@ -194,7 +214,7 @@ if (running_on_arm()) { ... }
 Valid categories: `defensive_programming`, `tool_false_positive`,
 `platform_specific`, `other`. IDs must be kebab-case.
 
-## 7. Run it
+## 8. Run it
 
 ```bash
 # Collect coverage data.
@@ -239,3 +259,9 @@ bazel run @score_cpp_policies//coverage:generate_coverage_html -- \
 - **`llvm-cov not found in runfiles`** — the macro arg `llvm_cov` must
   point to a real binary target in your repo's repo mapping; the
   default `@llvm_toolchain//:llvm-cov` requires `use_repo(llvm, "llvm_toolchain")`.
+- **`llvm-profdata not found` / coverage collection fails outright** — you
+  are pointing `--coverage_output_generator` directly at
+  `@score_cpp_policies//coverage:merger` instead of a `score_coverage_merger`
+  wrapper. Nothing sets the `LLVM_PROFDATA` env var it falls back to by
+  default — create a `merger_wrapper` (step 4) and point
+  `--coverage_output_generator` at it instead.

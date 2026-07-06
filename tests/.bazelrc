@@ -34,4 +34,5 @@ build:tsan_ubsan    --extra_toolchains=@llvm_toolchain//:cc-toolchain-x86_64-lin
 # ---------------------------------------------------------------------------
 coverage --extra_toolchains=@llvm_toolchain//:cc-toolchain-x86_64-linux
 coverage --instrumentation_filter="^//coverage[/:]"
+coverage --coverage_output_generator=//coverage:merger_wrapper
 coverage --coverage_report_generator=//coverage:reporter_wrapper

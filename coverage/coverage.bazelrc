@@ -22,19 +22,22 @@
 # file:
 #
 #   coverage --instrumentation_filter="^//<your_top_level_package>[/:]"
+#   coverage --coverage_output_generator=//<your_dir>:merger_wrapper
 #   coverage --coverage_report_generator=//<your_dir>:reporter_wrapper
 #
-# The reporter_wrapper target must be created with the
-# `score_coverage_reporter` macro from @score_cpp_policies//coverage:defs.bzl
-# so that consumer-specific filter regex extensions and the consumer
-# workspace root are wired in correctly.
+# The merger_wrapper and reporter_wrapper targets must be created with the
+# `score_coverage_merger` / `score_coverage_reporter` macros from
+# @score_cpp_policies//coverage:defs.bzl so that llvm-profdata (and, for the
+# reporter, llvm-cov / filter regex extensions / the consumer workspace root)
+# are wired in correctly by label instead of relying on ambient environment
+# variables nothing sets by default.
 #
 # Prerequisites the consumer's MODULE.bazel must satisfy:
 #   - bazel_dep(name = "score_cpp_policies", version = "...")
 #   - register an llvm toolchain via the toolchains_llvm extension and pass
 #     the resulting `:llvm-cov` and `:llvm-profdata` labels to the
-#     `score_coverage_reporter` macro (the repository name is freely chosen
-#     by the consumer)
+#     `score_coverage_merger` / `score_coverage_reporter` macros (the
+#     repository name is freely chosen by the consumer)
 
 # ---------------------------------------------------------------------------
 # Bazel coverage instrumentation flags.
@@ -48,11 +51,11 @@ coverage --experimental_fetch_all_coverage_outputs
 
 # ---------------------------------------------------------------------------
 # Custom coverage report generators provided by @score_cpp_policies.
-# The merger is consumer-agnostic and is used as-is.
-# The reporter_wrapper MUST be defined per-consumer via score_coverage_reporter
-# and pointed to with `--coverage_report_generator` in the consumer's .bazelrc.
+# Both the merger_wrapper and reporter_wrapper MUST be defined per-consumer
+# via score_coverage_merger / score_coverage_reporter and pointed to with
+# --coverage_output_generator / --coverage_report_generator in the consumer's
+# .bazelrc — see the "deliberately does NOT set" note above.
 # ---------------------------------------------------------------------------
-coverage --coverage_output_generator=@score_cpp_policies//coverage:merger
 
 # ---------------------------------------------------------------------------
 # Test-time environment.
