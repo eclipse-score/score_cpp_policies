@@ -143,6 +143,10 @@ def main() -> None:
                     lcov_text, untested_sources, workspace_root
                 )
 
+    # Make all SF: paths workspace-relative for portability (devcontainer builds
+    # opened on host, archives unpacked elsewhere, IDE gutters, SonarQube, etc.).
+    lcov_text = _make_lcov_paths_relative(lcov_text, workspace_root)
+
     with open(lcov_report_dir / "lcov.dat", "w", encoding="utf-8") as f:
         f.write(lcov_text)
 
@@ -531,6 +535,32 @@ def _append_zero_coverage_lcov(
         return lcov_text
     sep = "" if lcov_text.endswith("\n") else "\n"
     return lcov_text + sep + "".join(blocks)
+
+
+def _make_lcov_paths_relative(lcov_text: str, workspace_root: str) -> str:
+    """Strip workspace_root from all SF: paths to make them portable.
+
+    Absolute paths break when the coverage report is built in one environment
+    (e.g. a devcontainer at /workspace/...) and consumed in another (e.g. the
+    host at /home/user/..., or an unpacked archive). IDE coverage gutters,
+    SonarQube, and other LCOV consumers expect paths relative to the project
+    root.
+    """
+    ws_prefix = os.path.normpath(workspace_root) + os.sep
+    lines = []
+    for line in lcov_text.splitlines():
+        if line.startswith("SF:"):
+            abs_path = line[3:].strip()
+            # Strip workspace prefix if present, otherwise leave unchanged
+            # (external files legitimately resolve outside workspace_root).
+            if abs_path.startswith(ws_prefix):
+                rel_path = abs_path[len(ws_prefix):]
+                lines.append(f"SF:{rel_path}")
+            else:
+                lines.append(line)
+        else:
+            lines.append(line)
+    return "\n".join(lines) + "\n"
 
 
 def _augment_text_summary(summary_text: str, untested_sources: List[str], lcov_text: str) -> str:

@@ -33,6 +33,7 @@ from coverage.reporter import (
     _find_untested_sources,
     _is_likely_executable,
     _lcov_totals,
+    _make_lcov_paths_relative,
     _render_untested_rows,
     _resolve_workspace_root,
 )
@@ -157,6 +158,58 @@ class LcovTotalsTest(unittest.TestCase):
 
     def test_empty_lcov(self):
         self.assertEqual(_lcov_totals(""), (0, 0))
+
+
+class MakeLcovPathsRelativeTest(unittest.TestCase):
+    def test_strips_workspace_prefix_from_sf_lines(self):
+        lcov = textwrap.dedent("""\
+            SF:/workspace/score_inc_lifecycle/src/a.cpp
+            DA:1,5
+            DA:2,0
+            LF:2
+            LH:1
+            end_of_record
+            SF:/workspace/score_inc_lifecycle/src/b.cpp
+            DA:1,3
+            LF:1
+            LH:1
+            end_of_record
+        """)
+        result = _make_lcov_paths_relative(lcov, "/workspace/score_inc_lifecycle")
+        self.assertIn("SF:src/a.cpp\n", result)
+        self.assertIn("SF:src/b.cpp\n", result)
+        self.assertNotIn("/workspace", result)
+
+    def test_leaves_external_paths_unchanged(self):
+        # Files outside workspace_root (e.g. system headers, external repos)
+        # should not be modified.
+        lcov = textwrap.dedent("""\
+            SF:/workspace/myproject/src/main.cpp
+            DA:1,1
+            end_of_record
+            SF:/usr/include/c++/v1/iostream
+            DA:42,1
+            end_of_record
+        """)
+        result = _make_lcov_paths_relative(lcov, "/workspace/myproject")
+        self.assertIn("SF:src/main.cpp\n", result)
+        self.assertIn("SF:/usr/include/c++/v1/iostream\n", result)
+
+    def test_preserves_non_sf_lines(self):
+        lcov = textwrap.dedent("""\
+            SF:/workspace/project/foo.cpp
+            FN:10,_Z3foov
+            FNDA:5,_Z3foov
+            DA:10,5
+            LF:1
+            LH:1
+            end_of_record
+        """)
+        result = _make_lcov_paths_relative(lcov, "/workspace/project")
+        self.assertIn("FN:10,_Z3foov\n", result)
+        self.assertIn("FNDA:5,_Z3foov\n", result)
+        self.assertIn("DA:10,5\n", result)
+        self.assertIn("end_of_record\n", result)
 
 
 class FindUntestedSourcesTest(unittest.TestCase):
