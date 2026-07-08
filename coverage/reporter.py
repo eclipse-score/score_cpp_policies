@@ -103,6 +103,10 @@ def main() -> None:
         output_format="html",
         html_report_dir=html_report_dir,
     )
+
+    # Make displayed source paths in HTML relative for portability.
+    _make_html_paths_relative(html_report_dir, workspace_root)
+
     lcov_report_dir = Path.cwd() / "lcov_report"
     lcov_report_dir.mkdir(exist_ok=True)
     lcov_result = run_llvm_cov_export(
@@ -561,6 +565,40 @@ def _make_lcov_paths_relative(lcov_text: str, workspace_root: str) -> str:
         else:
             lines.append(line)
     return "\n".join(lines) + "\n"
+
+
+def _make_html_paths_relative(html_dir: Path, workspace_root: str) -> None:
+    """Rewrite source-name-title divs in HTML to show workspace-relative paths.
+
+    llvm-cov embeds the absolute path from --path-equivalence in the
+    'source-name-title' <pre> tag of every per-file coverage page. When the
+    report is built in one environment (e.g. a devcontainer) and viewed in
+    another (host, unpacked archive), the displayed path is misleading.
+    Rewrite to workspace-relative paths for clarity and portability.
+    """
+    ws_prefix = os.path.normpath(workspace_root)
+    if not ws_prefix.endswith(os.sep):
+        ws_prefix += os.sep
+
+    for html_file in html_dir.rglob("*.html"):
+        content = html_file.read_text(encoding="utf-8")
+        # Match: <div class='source-name-title'><pre>/absolute/path.cpp</pre></div>
+        # Replace the absolute path with workspace-relative.
+        def replace_path(match):
+            abs_path = match.group(1)
+            if abs_path.startswith(ws_prefix):
+                rel_path = abs_path[len(ws_prefix):]
+                return f"<div class='source-name-title'><pre>{rel_path}</pre></div>"
+            return match.group(0)
+
+        import re
+        new_content = re.sub(
+            r"<div class='source-name-title'><pre>([^<]+)</pre></div>",
+            replace_path,
+            content
+        )
+        if new_content != content:
+            html_file.write_text(new_content, encoding="utf-8")
 
 
 def _augment_text_summary(summary_text: str, untested_sources: List[str], lcov_text: str) -> str:

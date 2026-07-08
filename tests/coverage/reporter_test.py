@@ -33,6 +33,7 @@ from coverage.reporter import (
     _find_untested_sources,
     _is_likely_executable,
     _lcov_totals,
+    _make_html_paths_relative,
     _make_lcov_paths_relative,
     _render_untested_rows,
     _resolve_workspace_root,
@@ -210,6 +211,52 @@ class MakeLcovPathsRelativeTest(unittest.TestCase):
         self.assertIn("FNDA:5,_Z3foov\n", result)
         self.assertIn("DA:10,5\n", result)
         self.assertIn("end_of_record\n", result)
+
+
+class MakeHtmlPathsRelativeTest(unittest.TestCase):
+    def test_rewrites_source_name_title_to_relative_path(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            html_dir = Path(tmpdir) / "html"
+            html_dir.mkdir()
+            test_html = html_dir / "foo.html"
+            test_html.write_text(
+                "<div class='source-name-title'><pre>/workspace/project/src/main.cpp</pre></div>"
+            )
+
+            _make_html_paths_relative(html_dir, "/workspace/project")
+
+            content = test_html.read_text()
+            self.assertIn("<div class='source-name-title'><pre>src/main.cpp</pre></div>", content)
+            self.assertNotIn("/workspace/project", content)
+
+    def test_leaves_external_paths_unchanged(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            html_dir = Path(tmpdir) / "html"
+            html_dir.mkdir()
+            test_html = html_dir / "foo.html"
+            test_html.write_text(
+                "<div class='source-name-title'><pre>/usr/include/c++/iostream</pre></div>"
+            )
+
+            _make_html_paths_relative(html_dir, "/workspace/project")
+
+            content = test_html.read_text()
+            self.assertIn("/usr/include/c++/iostream", content)
+
+    def test_handles_nested_directories(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            html_dir = Path(tmpdir) / "html"
+            nested = html_dir / "coverage" / "src"
+            nested.mkdir(parents=True)
+            test_html = nested / "bar.html"
+            test_html.write_text(
+                "<div class='source-name-title'><pre>/home/user/myproject/src/utils/helper.cpp</pre></div>"
+            )
+
+            _make_html_paths_relative(html_dir, "/home/user/myproject")
+
+            content = test_html.read_text()
+            self.assertIn("src/utils/helper.cpp", content)
 
 
 class FindUntestedSourcesTest(unittest.TestCase):
