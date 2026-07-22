@@ -13,6 +13,17 @@
 
 load("@rules_cc//cc/toolchains:args.bzl", "cc_args")
 load("@rules_cc//cc/toolchains:feature.bzl", "cc_feature")
+load("@rules_cc//cc/toolchains:mutually_exclusive_category.bzl", "cc_mutually_exclusive_category")
+
+cc_mutually_exclusive_category(
+    name = "asan_tsan",
+    visibility = ["//visibility:public"],
+)
+
+cc_mutually_exclusive_category(
+    name = "lsan_tsan",
+    visibility = ["//visibility:public"],
+)
 
 # Minimal debug info for stack traces (-g1); combine with --strip=never (set in sanitizers.bazelrc).
 cc_args(
@@ -53,6 +64,7 @@ cc_feature(
     ],
     feature_name = "score_asan",
     implies = ["debug_symbols"],
+    mutually_exclusive = [":asan_tsan"],
     visibility = ["//visibility:public"],
 )
 
@@ -107,6 +119,7 @@ cc_feature(
     ],
     feature_name = "score_lsan",
     implies = ["debug_symbols"],
+    mutually_exclusive = [":lsan_tsan"],
     visibility = ["//visibility:public"],
 )
 
@@ -135,5 +148,9 @@ cc_feature(
     ],
     feature_name = "score_tsan",
     implies = ["debug_symbols"],
+    mutually_exclusive = [
+        ":asan_tsan",
+        ":lsan_tsan",
+    ],
     visibility = ["//visibility:public"],
 )
