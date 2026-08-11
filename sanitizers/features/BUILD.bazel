@@ -25,7 +25,6 @@ cc_mutually_exclusive_category(
     visibility = ["//visibility:public"],
 )
 
-# Minimal debug info for stack traces (-g1); combine with --strip=never (set in sanitizers.bazelrc).
 cc_args(
     name = "debug_symbols_args",
     actions = [
@@ -76,24 +75,39 @@ cc_args(
 )
 
 cc_args(
-    name = "ubsan_link_args",
+    name = "ubsan_link_args_base",
     actions = ["@rules_cc//cc/toolchains/actions:link_actions"],
-    args = [
-        "-fsanitize=undefined",
-        # Clang-only: links the UBSan C++ runtime; not supported by GCC (see sanitizers/README.md).
-        "-fsanitize-link-c++-runtime",
-    ],
+    args = ["-fsanitize=undefined"],
+    visibility = ["//visibility:public"],
+)
+
+cc_args(
+    name = "ubsan_link_args_clang_runtime",
+    actions = ["@rules_cc//cc/toolchains/actions:link_actions"],
+    args = ["-fsanitize-link-c++-runtime"],
     visibility = ["//visibility:public"],
 )
 
 cc_feature(
-    name = "ubsan",
-    args = [
-        ":ubsan_compile_args",
-        ":ubsan_link_args",
-    ],
-    feature_name = "score_ubsan",
+    name = "ubsan_base",
+    args = [":ubsan_compile_args", ":ubsan_link_args_base"],
+    feature_name = "score_ubsan_base",
     implies = ["debug_symbols"],
+    visibility = ["//visibility:public"],
+)
+
+cc_feature(
+    name = "ubsan_gcc",
+    feature_name = "score_ubsan_gcc",
+    implies = ["ubsan_base"],
+    visibility = ["//visibility:public"],
+)
+
+cc_feature(
+    name = "ubsan_clang",
+    args = [":ubsan_link_args_clang_runtime"],
+    feature_name = "score_ubsan_clang",
+    implies = ["ubsan_base"],
     visibility = ["//visibility:public"],
 )
 

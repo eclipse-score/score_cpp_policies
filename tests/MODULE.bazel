@@ -22,7 +22,35 @@ local_path_override(
     path = "..",
 )
 
-# LLVM toolchain for clang-tidy (provides @llvm_toolchain//:clang-tidy) and sanitizers.
+bazel_dep(name = "score_bazel_cpp_toolchains")
+git_override(
+    module_name = "score_bazel_cpp_toolchains",
+    commit = "942559c7dcdfa72d53343fcf048cade00d4accb8",
+    remote = "https://github.com/eclipse-score/bazel_cpp_toolchains",
+)
+
+# --- GCC toolchain ---
+
+gcc = use_extension("@score_bazel_cpp_toolchains//extensions:gcc.bzl", "gcc")
+gcc.toolchain(
+    name = "score_gcc_x86_64_toolchain_fi",
+    extra_known_features = [
+        "@score_cpp_policies//sanitizers/features:debug_symbols",
+        "@score_cpp_policies//sanitizers/features:asan",
+        "@score_cpp_policies//sanitizers/features:ubsan_base",
+        "@score_cpp_policies//sanitizers/features:ubsan_gcc",
+        "@score_cpp_policies//sanitizers/features:lsan",
+        "@score_cpp_policies//sanitizers/features:tsan",
+    ],
+    target_cpu = "x86_64",
+    target_os = "linux",
+    use_base_constraints_only = True,
+    use_default_package = True,
+    version = "12.2.0",
+)
+use_repo(gcc, "score_gcc_x86_64_toolchain_fi")
+
+# --- Clang toolchain ---
 
 llvm = use_extension(
     "@toolchains_llvm//toolchain/extensions:llvm.bzl",
@@ -32,7 +60,8 @@ llvm.toolchain(
     extra_known_features = [
         "@score_cpp_policies//sanitizers/features:debug_symbols",
         "@score_cpp_policies//sanitizers/features:asan",
-        "@score_cpp_policies//sanitizers/features:ubsan",
+        "@score_cpp_policies//sanitizers/features:ubsan_base",
+        "@score_cpp_policies//sanitizers/features:ubsan_clang",
         "@score_cpp_policies//sanitizers/features:lsan",
         "@score_cpp_policies//sanitizers/features:tsan",
     ],

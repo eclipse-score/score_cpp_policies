@@ -64,18 +64,22 @@ Do not set them directly unless you have a non-standard composition need.
 One `cc_feature` per sanitizer, registered under the `score_*` namespace to
 avoid collisions with toolchain built-in feature names:
 
-| Feature name | Sanitizer | Key flags |
-|---|---|---|
-| `score_asan` | AddressSanitizer | `-fsanitize=address` |
-| `score_ubsan` | UndefinedBehaviorSanitizer | `-fsanitize=undefined`, `-fsanitize-link-c++-runtime`* |
-| `score_lsan` | LeakSanitizer | `-fsanitize=leak` |
-| `score_tsan` | ThreadSanitizer | `-fsanitize=thread`, `-O1` |
-| `debug_symbols` | (shared) | `-g1` + `--strip=never` |
+| Target | Feature name | Toolchain | Key flags |
+|---|---|---|---|
+| `asan` | `score_asan` | both | `-fsanitize=address` |
+| `ubsan_base` | `score_ubsan_base` | both | `-fsanitize=undefined` (compile + link) |
+| `ubsan_gcc` | `score_ubsan_gcc` | GCC | implies `ubsan_base` |
+| `ubsan_clang` | `score_ubsan_clang` | Clang | implies `ubsan_base` + `-fsanitize-link-c++-runtime` (link) |
+| `lsan` | `score_lsan` | both | `-fsanitize=leak` |
+| `tsan` | `score_tsan` | both | `-fsanitize=thread`, `-O1` |
+| `debug_symbols` | `debug_symbols` | both | `-g1` + `--strip=never` |
 
-*`-fsanitize-link-c++-runtime` is Clang-only. It ensures the UBSan C++ runtime
-library (`libclang_rt.ubsan_cxx`) is linked, which is required for C++ ABI
-error handlers. GCC does not support this flag but also does not need it (GCC
-links UBSan runtime automatically).
+UBSan uses a three-target composition:
+- `ubsan_base` carries the flags common to both toolchains (`-fsanitize=undefined` at compile and link time).
+- `ubsan_gcc` implies `ubsan_base` with no additional flags — GCC links the UBSan runtime automatically.
+- `ubsan_clang` implies `ubsan_base` and adds `-fsanitize-link-c++-runtime` at link time — Clang requires this to link `libclang_rt.ubsan_cxx` and does not do it automatically.
+
+Register the toolchain-appropriate target (`ubsan_gcc` or `ubsan_clang`) in `extra_known_features`, then enable via `--features=score_ubsan_gcc` or `--features=score_ubsan_clang`.
 
 #### Mutually exclusive runtimes (primary enforcement)
 
@@ -207,13 +211,27 @@ To use sanitizer features, register them in your toolchain's `known_features`
 or `extra_known_features`:
 
 ```python
-# In MODULE.bazel
+# Clang toolchain (toolchains_llvm)
 llvm.toolchain(
     llvm_version = "...",
     extra_known_features = [
         "@score_cpp_policies//sanitizers/features:debug_symbols",
         "@score_cpp_policies//sanitizers/features:asan",
-        "@score_cpp_policies//sanitizers/features:ubsan",
+        "@score_cpp_policies//sanitizers/features:ubsan_base",
+        "@score_cpp_policies//sanitizers/features:ubsan_clang",
+        "@score_cpp_policies//sanitizers/features:lsan",
+        "@score_cpp_policies//sanitizers/features:tsan",
+    ],
+)
+
+# GCC toolchain
+gcc.toolchain(
+    ...
+    extra_known_features = [
+        "@score_cpp_policies//sanitizers/features:debug_symbols",
+        "@score_cpp_policies//sanitizers/features:asan",
+        "@score_cpp_policies//sanitizers/features:ubsan_base",
+        "@score_cpp_policies//sanitizers/features:ubsan_gcc",
         "@score_cpp_policies//sanitizers/features:lsan",
         "@score_cpp_policies//sanitizers/features:tsan",
     ],

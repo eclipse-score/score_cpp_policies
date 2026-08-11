@@ -23,6 +23,127 @@ genrule(
     cmd = "cp $< $@",
 )
 
+# Test the cc_feature injection path directly, not the bool_flag path.
+# Tagged manual — each target needs its own explicit config. Three test types per sanitizer:
+#
+#   bazel test --config=feature_only_asan //:feature_injection_asan
+#   bazel test --config=feature_only_asan //:feature_injection_positive
+#   bazel test --config=feature_only_asan //:feature_injection_asan_runtime
+#
+# Same pattern for ubsan/lsan/tsan and combos (asan_ubsan_lsan, tsan_ubsan).
+# GCC feature injection uses feature_only_gcc_* configs (see .bazelrc); compile-time
+# __has_feature() tests are LLVM-only — GCC is verified via positive + runtime tests.
+
+cc_test(
+    name = "feature_injection_asan",
+    srcs = ["feature_injection/asan_injection_test.cpp"],
+    tags = ["manual"],
+)
+
+cc_test(
+    name = "feature_injection_ubsan",
+    srcs = ["feature_injection/ubsan_injection_test.cpp"],
+    tags = ["manual"],
+)
+
+cc_test(
+    name = "feature_injection_lsan",
+    srcs = ["feature_injection/lsan_injection_test.cpp"],
+    tags = ["manual"],
+)
+
+cc_test(
+    name = "feature_injection_tsan",
+    srcs = ["feature_injection/tsan_injection_test.cpp"],
+    tags = ["manual"],
+)
+
+cc_test(
+    name = "feature_injection_positive",
+    srcs = ["feature_injection/sanitizer_positive_test.cpp"],
+    tags = ["manual"],
+)
+
+cc_test(
+    name = "feature_injection_asan_ubsan_lsan",
+    srcs = ["feature_injection/asan_ubsan_lsan_combo_test.cpp"],
+    tags = ["manual"],
+)
+
+cc_test(
+    name = "feature_injection_tsan_ubsan",
+    srcs = ["feature_injection/tsan_ubsan_combo_test.cpp"],
+    tags = ["manual"],
+)
+
+sh_test(
+    name = "feature_injection_asan_runtime",
+    srcs = ["negative/verify_sanitizer_failure.sh"],
+    args = [
+        "$(location :asan_fail_test)",
+        "55",
+    ],
+    data = [":asan_fail_test"],
+    tags = ["manual"],
+)
+
+sh_test(
+    name = "feature_injection_ubsan_runtime",
+    srcs = ["negative/verify_sanitizer_failure.sh"],
+    args = [
+        "$(location :ubsan_fail_test)",
+        "55",
+    ],
+    data = [":ubsan_fail_test"],
+    tags = ["manual"],
+)
+
+sh_test(
+    name = "feature_injection_lsan_runtime",
+    srcs = ["negative/verify_sanitizer_failure.sh"],
+    args = [
+        "$(location :lsan_fail_test)",
+        "55",
+    ],
+    data = [":lsan_fail_test"],
+    tags = ["manual"],
+)
+
+sh_test(
+    name = "feature_injection_tsan_runtime",
+    srcs = ["negative/verify_sanitizer_failure.sh"],
+    args = [
+        "$(location :tsan_fail_test)",
+        "55",
+    ],
+    data = [":tsan_fail_test"],
+    tags = ["manual"],
+)
+
+# Exercises ASan violation detection in the combo. UBSan runtime is covered
+# separately by feature_injection_ubsan_runtime.
+sh_test(
+    name = "feature_injection_asan_ubsan_lsan_runtime",
+    srcs = ["negative/verify_sanitizer_failure.sh"],
+    args = [
+        "$(location :asan_fail_test)",
+        "55",
+    ],
+    data = [":asan_fail_test"],
+    tags = ["manual"],
+)
+
+sh_test(
+    name = "feature_injection_tsan_ubsan_runtime",
+    srcs = ["negative/verify_sanitizer_failure.sh"],
+    args = [
+        "$(location :tsan_fail_test)",
+        "55",
+    ],
+    data = [":tsan_fail_test"],
+    tags = ["manual"],
+)
+
 # ==============================================================================
 # Positive tests - verify clean code passes with all sanitizers
 # ==============================================================================

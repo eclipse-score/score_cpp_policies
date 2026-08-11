@@ -65,3 +65,85 @@ jobs:
           name: testlogs-${{ matrix.config }}-${{ github.run_id }}
           path: tests/bazel-testlogs/**/test.log
           if-no-files-found: ignore
+
+  test-feature-injection:
+    name: Feature injection (${{ matrix.label }})
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: asan
+            config: feature_only_asan
+            compile_target: feature_injection_asan
+            positive_target: feature_injection_positive
+            runtime_target: feature_injection_asan_runtime
+          - label: ubsan
+            config: feature_only_ubsan
+            compile_target: feature_injection_ubsan
+            positive_target: feature_injection_positive
+            runtime_target: feature_injection_ubsan_runtime
+          - label: lsan
+            config: feature_only_lsan
+            compile_target: feature_injection_lsan
+            positive_target: feature_injection_positive
+            runtime_target: feature_injection_lsan_runtime
+          - label: tsan
+            config: feature_only_tsan
+            compile_target: feature_injection_tsan
+            positive_target: feature_injection_positive
+            runtime_target: feature_injection_tsan_runtime
+          - label: asan+ubsan+lsan
+            config: feature_only_asan_ubsan_lsan
+            compile_target: feature_injection_asan_ubsan_lsan
+            positive_target: feature_injection_positive
+            runtime_target: feature_injection_asan_ubsan_lsan_runtime
+          - label: tsan+ubsan
+            config: feature_only_tsan_ubsan
+            compile_target: feature_injection_tsan_ubsan
+            positive_target: feature_injection_positive
+            runtime_target: feature_injection_tsan_ubsan_runtime
+          - label: gcc/asan
+            config: feature_only_gcc_asan
+            compile_target: ""
+            positive_target: feature_injection_positive
+            runtime_target: feature_injection_asan_runtime
+          - label: gcc/ubsan
+            config: feature_only_gcc_ubsan
+            compile_target: ""
+            positive_target: feature_injection_positive
+            runtime_target: feature_injection_ubsan_runtime
+          - label: gcc/lsan
+            config: feature_only_gcc_lsan
+            compile_target: ""
+            positive_target: feature_injection_positive
+            runtime_target: feature_injection_lsan_runtime
+          - label: gcc/tsan
+            config: feature_only_gcc_tsan
+            compile_target: ""
+            positive_target: feature_injection_positive
+            runtime_target: feature_injection_tsan_runtime
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Bazel
+        uses: bazel-contrib/setup-bazel@0.18.0
+        with:
+          bazelisk-cache: true
+          cache-save: ${{ github.event_name == 'push' }}
+
+      - name: Verify ${{ matrix.label }} flag injection (compile-time)
+        if: matrix.compile_target != ''
+        working-directory: tests
+        run: bazel test --config=${{ matrix.config }} //:${{ matrix.compile_target }} --verbose_failures
+
+      - name: Verify ${{ matrix.label }} no false positives on clean code (positive)
+        working-directory: tests
+        run: bazel test --config=${{ matrix.config }} //:${{ matrix.positive_target }} --verbose_failures
+
+      - name: Verify ${{ matrix.label }} sanitizer catches bugs (negative)
+        working-directory: tests
+        run: bazel test --config=${{ matrix.config }} //:${{ matrix.runtime_target }} --verbose_failures
