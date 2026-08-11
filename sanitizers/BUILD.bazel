@@ -14,8 +14,25 @@
 load("//sanitizers/private:expand_template.bzl", "expand_template")
 
 exports_files(
-    ["sanitizers.bazelrc"],
+    [
+        "presets.bzl",
+        "sanitizers.bazelrc",
+    ],
     visibility = ["//visibility:public"],
+)
+
+# Fails if sanitizers.bazelrc and SANITIZER_PRESETS drift apart.
+sh_test(
+    name = "sanitizers_bazelrc_equivalence_test",
+    srcs = ["//tools:check_bazelrc_equivalence.py"],
+    args = [
+        "$(location :sanitizers.bazelrc)",
+        "$(location //tools:preset)",
+    ],
+    data = [
+        ":sanitizers.bazelrc",
+        "//tools:preset",
+    ],
 )
 
 filegroup(

@@ -42,6 +42,12 @@ import %workspace%/path/to/clang_tidy.bazelrc   # if vendored locally
 > `tests/` self-test workspace here), a relative `import` works. Otherwise vendor
 > the three lines from `clang_tidy.bazelrc` into your own `.bazelrc`.
 
+> Or consume `CLANG_TIDY_PRESETS` via [bazelrc-preset.bzl](https://github.com/bazel-contrib/bazelrc-preset.bzl)
+> instead — see `sanitizers/README.md` § Distribution via bazelrc-preset.bzl for the
+> full steps. The same `tools/BUILD` preset target can pass
+> `@score_cpp_policies//:presets.bzl`'s `PRESETS` (sanitizers + clang-tidy together) or
+> `@score_cpp_policies//clang_tidy:presets.bzl`'s `CLANG_TIDY_PRESETS` alone.
+
 ### 3 — Create `tools/lint/BUILD.bazel`
 
 ```python

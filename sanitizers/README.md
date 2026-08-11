@@ -28,6 +28,43 @@ bazel test --config=tsan_ubsan //your/target/...
 > ```
 > try-import %workspace%/path/to/score_cpp_policies/sanitizers/sanitizers.bazelrc
 > ```
+>
+> Or consume `SANITIZER_PRESETS` via [bazelrc-preset.bzl](https://github.com/bazel-contrib/bazelrc-preset.bzl) instead — see
+> [Distribution via bazelrc-preset.bzl](#distribution-via-bazelrc-presetbzl) below.
+
+---
+
+## Distribution via bazelrc-preset.bzl
+
+[bazelrc-preset.bzl](https://github.com/bazel-contrib/bazelrc-preset.bzl) generates a
+`.bazelrc` fragment from `SANITIZER_PRESETS` that you vendor into your own repo,
+instead of copy-pasting `sanitizers.bazelrc` by hand.
+
+1. Add the dependency to your `MODULE.bazel`:
+   ```python
+   bazel_dep(name = "score_cpp_policies", version = "<version>")
+   bazel_dep(name = "bazelrc-preset.bzl", version = "1.9.2")
+   ```
+2. Reference `SANITIZER_PRESETS` (or `PRESETS` for sanitizers + clang-tidy together)
+   from a `BUILD` file, e.g. `tools/BUILD`:
+   ```python
+   load("@bazelrc-preset.bzl", "bazelrc_preset")
+   load("@score_cpp_policies//:presets.bzl", "PRESETS")
+   # Or, sanitizers only:
+   # load("@score_cpp_policies//sanitizers:presets.bzl", "SANITIZER_PRESETS")
+
+   bazelrc_preset(
+       name = "preset",
+       extra_presets = PRESETS,
+   )
+   ```
+3. Generate and commit the preset file: `bazel run //tools:preset.update`.
+4. Import it from your workspace `.bazelrc`:
+   ```
+   import %workspace%/tools/preset.bazelrc
+   ```
+5. `bazel test //tools:preset.update_test` catches drift whenever `presets.bzl`
+   changes — re-run step 3 to update.
 
 ---
 
