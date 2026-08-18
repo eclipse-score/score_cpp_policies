@@ -12,7 +12,6 @@
 # *******************************************************************************
 
 load("@rules_cc//cc/toolchains:args.bzl", "cc_args")
-load("@rules_cc//cc/toolchains:feature.bzl", "cc_feature")
 
 # --------------------------------------------------------------------------------
 # All minimal compiler warnings (enabled by default).
