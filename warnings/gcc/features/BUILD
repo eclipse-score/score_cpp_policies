@@ -20,11 +20,17 @@ _WARNING_LEVELS = [
     "all",
 ]
 
+# score_bazel_cpp_toolchains v1.0.0 documents the top-level feature as
+# `all_wall_warnings`; keep this public name in sync with that contract.
+_PUBLIC_FEATURE_NAMES = {
+    "all": "all_wall_warnings",
+}
+
 [
     cc_feature(
-        name = level + "_warnings",
+        name = _PUBLIC_FEATURE_NAMES.get(level, level + "_warnings"),
         args = ["@score_cpp_policies//warnings/gcc/args:{}_warnings_args".format(level)],
-        feature_name = level + "_warnings",
+        feature_name = _PUBLIC_FEATURE_NAMES.get(level, level + "_warnings"),
         implies = [_WARNING_LEVELS[i - 1] + "_warnings"] if i > 0 else [],
         visibility = ["//visibility:public"],
     )

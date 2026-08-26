@@ -4,16 +4,13 @@ Centralized GCC warning `cc_feature`s for S-CORE C++ modules. Warnings are
 grouped into three cumulative severity levels plus a separate opt-in toggle
 that turns warnings into build errors.
 
-> **Note:** If you're using `score_bazel_cpp_toolchains`, keep in mind that
-> these warning features require version `1.0.0` or above.
-
 ## Architecture
 
 ```
 warnings/
 └── gcc/
     ├── features/         # Public cc_feature entry points
-    │   └── BUILD          #   minimal_warnings, strict_warnings, all_warnings, warnings_as_errors
+    │   └── BUILD          #   minimal_warnings, strict_warnings, all_wall_warnings, warnings_as_errors
     ├── args/             # cc_args_list combining the per-OS arg targets below
     └── args/{linux,qnx}/ # Actual -W flag lists (differ per OS due to GCC version/platform quirks)
 ```
@@ -33,14 +30,14 @@ The three severity features **imply** each other, so enabling a higher level
 automatically enables everything below it:
 
 ```
-all_warnings → implies → strict_warnings → implies → minimal_warnings
+all_wall_warnings → implies → strict_warnings → implies → minimal_warnings
 ```
 
 | Feature | Meaning |
 |---|---|
-| `minimal_warnings` | Baseline warnings enabled by default; low false-positive rate. |
+| `minimal_warnings` | Baseline warnings with a low false-positive rate; still opt-in — see [Enabling these features](#enabling-these-features). |
 | `strict_warnings` | Adds conversion/shadowing/pedantic-style checks with a higher chance of firing on existing code. |
-| `all_warnings` | Adds the remaining GCC diagnostics not covered above (most already implied by `-Wall`/`-Wextra`, listed explicitly here for auditability). |
+| `all_wall_warnings` | Adds the remaining GCC diagnostics not covered above (most already implied by `-Wall`/`-Wextra`, listed explicitly here for auditability). |
 | `warnings_as_errors` | Independent toggle: escalates every enabled warning above to a hard compile error via `-Werror`. |
 
 > **Linux vs. QNX:** The flag sets differ slightly between the two GCC
@@ -48,6 +45,32 @@ all_warnings → implies → strict_warnings → implies → minimal_warnings
 > (worked around with `-Wno-error=...`) and groups a few checks under a
 > different level than Linux. Each table below is per-OS where the sets
 > diverge.
+
+## Enabling these features
+
+These `cc_feature` targets are external to `score_bazel_cpp_toolchains`, so
+upgrading the toolchain version alone does **not** make them available.
+Consumers must also inject the feature labels into the toolchain module
+extension via `extra_known_features` (to make a feature selectable) and,
+if it should be on by default, `extra_enabled_features` as well:
+
+```starlark
+gcc = use_extension("@score_bazel_cpp_toolchains//extensions:gcc.bzl", "gcc")
+gcc.toolchain(
+    ...
+    extra_known_features = [
+        "@score_cpp_policies//warnings/gcc/features:minimal_warnings",
+        "@score_cpp_policies//warnings/gcc/features:strict_warnings",
+        "@score_cpp_policies//warnings/gcc/features:all_wall_warnings",
+        "@score_cpp_policies//warnings/gcc/features:warnings_as_errors",
+    ],
+)
+```
+
+Without this step, none of `minimal_warnings`, `strict_warnings`,
+`all_wall_warnings`, or `warnings_as_errors` exist in the toolchain, so
+enabling them via `--features=...` or a target's `features` attribute has
+no effect.
 
 ---
 
@@ -190,7 +213,7 @@ all_warnings → implies → strict_warnings → implies → minimal_warnings
 
 ---
 
-## `all_warnings`
+## `all_wall_warnings`
 
 The remaining diagnostics not already covered by `minimal_warnings` /
 `strict_warnings`. The common-flag list is nearly identical on Linux and
@@ -218,7 +241,6 @@ QNX — QNX omits `-Wmaybe-uninitialized` for the same reason noted under
 | `-Wformat-overflow=1` | Warn (default level) about `sprintf`/`snprintf`-family calls whose output could overflow the destination buffer. |
 | `-Wformat-truncation=1` | Warn (default level) about `snprintf`-family calls whose output may be silently truncated. |
 | `-Wformat-zero-length` | Warn about calling a `printf`/`scanf`-family function with a zero-length format string. |
-| `-Wformat=1` | Base `-Wformat` checking of format strings against their arguments (the subset enabled without `=2`). |
 | `-Wframe-address` | Warn about `__builtin_frame_address`/`__builtin_return_address` called with a nonzero argument, which is unlikely to work as intended. |
 | `-Winfinite-recursion` | Warn about a function call that can be statically determined to recurse indefinitely. |
 | `-Winit-self` | Warn about a variable initialized with itself, e.g. `int i = i;` (usually a typo). |

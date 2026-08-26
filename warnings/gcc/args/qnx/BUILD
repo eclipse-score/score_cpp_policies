@@ -14,7 +14,7 @@
 load("@rules_cc//cc/toolchains:args.bzl", "cc_args")
 
 # --------------------------------------------------------------------------------
-# All minimal compiler warnings (enabled by default).
+# All minimal compiler warnings (opt-in via extra_enabled_features, not on by default).
 # --------------------------------------------------------------------------------
 cc_args(
     name = "minimal_warnings_args",
@@ -145,7 +145,6 @@ cc_args(
         "-Wformat-overflow=1",
         "-Wformat-truncation=1",
         "-Wformat-zero-length",
-        "-Wformat=1",
         "-Wframe-address",
         "-Winfinite-recursion",
         "-Winit-self",
