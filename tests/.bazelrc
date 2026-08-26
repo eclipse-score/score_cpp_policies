@@ -76,3 +76,27 @@ test:feature_only_gcc_lsan   --test_env=LSAN_OPTIONS=exitcode=55
 build:feature_only_gcc_tsan  --extra_toolchains=@score_gcc_x86_64_toolchain_fi//:x86_64-linux
 build:feature_only_gcc_tsan  --features=score_tsan
 test:feature_only_gcc_tsan   --test_env=TSAN_OPTIONS=exitcode=55:halt_on_error=1
+
+# Warnings features (warnings/gcc) are GCC-only, so these always pin the GCC
+# toolchain. Each config also enables warnings_as_errors so a false positive at
+# that severity level turns into a build failure instead of a silent warning.
+# Shared configuration for simple test execution
+build:shared --incompatible_strict_action_env
+build:shared --sandbox_writable_path=/var/tmp
+
+build:x86_64-linux-gcc15 --config=shared
+build:x86_64-linux-gcc15 --host_platform=@score_bazel_platforms//:x86_64-linux-gcc_15.3.0-posix
+build:x86_64-linux-gcc15 --extra_toolchains=@score_gcc_toolchain_15//:x86_64-linux-gcc_15.3.0
+build:x86_64-linux-gcc15 --host_features=use_pthread
+
+build:feature_only_gcc_minimal_warnings --config=x86_64-linux-gcc15
+build:feature_only_gcc_minimal_warnings --features=minimal_warnings
+build:feature_only_gcc_minimal_warnings --features=warnings_as_errors
+
+build:feature_only_gcc_strict_warnings --config=x86_64-linux-gcc15
+build:feature_only_gcc_strict_warnings --features=strict_warnings
+build:feature_only_gcc_strict_warnings --features=warnings_as_errors
+
+build:feature_only_gcc_all_wall_warnings --config=x86_64-linux-gcc15
+build:feature_only_gcc_all_wall_warnings --features=all_wall_warnings
+build:feature_only_gcc_all_wall_warnings --features=warnings_as_errors

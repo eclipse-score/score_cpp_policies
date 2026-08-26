@@ -327,3 +327,73 @@ enabled to a hard compile error.
 |---|---|---|
 | `-Werror` | Linux & QNX | Turn every currently-enabled warning into a compile error, so a build cannot succeed while warnings remain. |
 | `-Wno-error=deprecated-declarations` | Linux only | Exempt deprecated-declaration warnings from the `-Werror` escalation above — deprecations are advisory and shouldn't block a build. |
+
+---
+
+## Testing
+
+The [`tests/`](../tests) module exercises the warnings features on GCC. It
+registers a dedicated toolchain (`score_gcc_toolchain_15`, GCC 15.3.0) in
+[`tests/MODULE.bazel`](../tests/MODULE.bazel) with `minimal_warnings`,
+`strict_warnings`, `all_wall_warnings`, and `warnings_as_errors` added to
+`extra_known_features` — this is the toolchain that must be used to test
+these features; it is **not** the same toolchain used for the sanitizer
+tests (`score_gcc_x86_64_toolchain_fi`).
+
+[`tests/.bazelrc`](../tests/.bazelrc) defines one `--config` per severity
+level, each pinning that toolchain and bundling `warnings_as_errors` so a
+false positive turns into a build failure instead of a silent warning:
+
+| Config | Feature enabled |
+|---|---|
+| `feature_only_gcc_minimal_warnings` | `minimal_warnings` + `warnings_as_errors` |
+| `feature_only_gcc_strict_warnings` | `strict_warnings` + `warnings_as_errors` |
+| `feature_only_gcc_all_wall_warnings` | `all_wall_warnings` + `warnings_as_errors` |
+
+### Positive test — no false positives
+
+[`tests/warnings/positive_test.cpp`](../tests/warnings/positive_test.cpp) is
+idiomatic code that must compile clean at every severity level. Run it as a
+normal test, e.g.:
+
+```bash
+cd tests
+bazel test --config=feature_only_gcc_minimal_warnings //:warnings_positive_test
+```
+
+### Negative targets — each severity actually catches its violation
+
+`minimal_warnings_violation`, `strict_warnings_violation`, and
+`all_wall_warnings_violation` are `cc_library` targets tagged `manual`,
+each containing one documented, intentional violation (see the header
+comment in the corresponding file:
+[`tests/warnings/minimal_violation.cpp`](../tests/warnings/minimal_violation.cpp),
+[`tests/warnings/strict_violation.cpp`](../tests/warnings/strict_violation.cpp),
+[`tests/warnings/all_wall_violation.cpp`](../tests/warnings/all_wall_violation.cpp)).
+They must **fail to build** under their matching config:
+
+```bash
+cd tests
+bazel build --config=feature_only_gcc_minimal_warnings //:minimal_warnings_violation
+```
+
+These are `cc_library` targets, not tests — `bazel test` doesn't apply to
+them (there's no runnable action), so CI invokes `bazel build` directly and
+inverts the exit code (see `test-warnings` in
+[`.github/workflows/tests.yml`](../.github/workflows/tests.yml)):
+
+```bash
+if bazel build --config=feature_only_gcc_minimal_warnings //:minimal_warnings_violation; then
+  echo "expected this build to fail, but it succeeded" >&2
+  exit 1
+fi
+```
+
+To confirm a violation file builds clean *without* the warnings feature
+enabled (i.e. the failure above really comes from the feature, not from
+some other compiler default), build it against the plain toolchain:
+
+```bash
+cd tests
+bazel build --extra_toolchains=@score_gcc_toolchain_15//:x86_64-linux-gcc_15.3.0 //:minimal_warnings_violation
+```

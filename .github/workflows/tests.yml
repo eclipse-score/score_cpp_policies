@@ -15,12 +15,17 @@ name: Tests
 
 on:
   pull_request:
+    types: [opened, reopened, synchronize]
   push:
     branches:
       - main
+  merge_group:
+    types: [checks_requested]
+  workflow_call:
 
 permissions:
   contents: read
+  actions: write
 
 jobs:
   test-sanitizers:
@@ -147,3 +152,64 @@ jobs:
       - name: Verify ${{ matrix.label }} sanitizer catches bugs (negative)
         working-directory: tests
         run: bazel test --config=${{ matrix.config }} //:${{ matrix.runtime_target }} --verbose_failures
+
+  test-warnings:
+    name: Warnings feature (${{ matrix.label }})
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: minimal_warnings
+            config: feature_only_gcc_minimal_warnings
+            violation_target: minimal_warnings_violation
+            expected_diagnostic: "-W(error=)?cast-qual"
+          - label: strict_warnings
+            config: feature_only_gcc_strict_warnings
+            violation_target: strict_warnings_violation
+            expected_diagnostic: "-W(error=)?vla"
+          - label: all_wall_warnings
+            config: feature_only_gcc_all_wall_warnings
+            violation_target: all_wall_warnings_violation
+            expected_diagnostic: "-W(error=)?unused-variable"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Bazel
+        uses: bazel-contrib/setup-bazel@0.18.0
+        with:
+          bazelisk-cache: true
+          cache-save: ${{ github.event_name == 'push' }}
+
+      - name: Verify ${{ matrix.label }} + warnings_as_errors has no false positives on clean code
+        working-directory: tests
+        run: bazel test --config=${{ matrix.config }} //:warnings_positive_test --verbose_failures
+
+      # This is a compile-time (build) failure, not a runnable test, so we invert
+      # the exit code here instead of relying on `bazel test` (which doesn't
+      # apply to cc_library targets). We also grep the log for the specific
+      # diagnostic each violation file documents, so an unrelated build failure
+      # (bad flag, missing toolchain, typo, ...) isn't mistaken for a pass.
+      - name: Verify ${{ matrix.label }} catches its documented violation (negative)
+        working-directory: tests
+        run: |
+          set +e
+          bazel build --config=${{ matrix.config }} //:${{ matrix.violation_target }} --verbose_failures > build.log 2>&1
+          STATUS=$?
+          set -e
+          cat build.log
+
+          if [ "$STATUS" -eq 0 ]; then
+            echo "::error::Expected //:${{ matrix.violation_target }} to fail to build under --config=${{ matrix.config }}, but it succeeded"
+            exit 1
+          fi
+
+          if ! grep -qE -- '${{ matrix.expected_diagnostic }}' build.log; then
+            echo "::error:://:${{ matrix.violation_target }} failed to build, but not because of the expected '${{ matrix.expected_diagnostic }}' diagnostic — see log above for the actual cause"
+            exit 1
+          fi
+
+
