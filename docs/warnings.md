@@ -397,3 +397,12 @@ some other compiler default), build it against the plain toolchain:
 cd tests
 bazel build --extra_toolchains=@score_gcc_toolchain_15//:x86_64-linux-gcc_15.3.0 //:minimal_warnings_violation
 ```
+
+---
+
+## Migrating from toolchain-owned warnings
+
+If you previously relied on GCC warning flags baked directly into
+`score_bazel_cpp_toolchains`, see
+[`migration-warnings.md`](migration-warnings.md) for the old vs. new
+model, compatibility expectations, and required changes.
