@@ -234,4 +234,35 @@ sh_test(
     target_compatible_with = ["@score_cpp_policies//sanitizers/constraints:only_ubsan"],
 )
 
+# ==============================================================================
+# Warnings feature tests (warnings/gcc) - GCC-only, see .bazelrc feature_only_gcc_*_warnings
+# ==============================================================================
+
+# Must build clean at every severity level, even combined with warnings_as_errors.
+# Run with e.g.: bazel test --config=feature_only_gcc_all_wall_warnings :warnings_positive_test
+cc_test(
+    name = "warnings_positive_test",
+    srcs = ["warnings/positive_test.cpp"],
+)
+
+# Documented, intentional violations - one per severity level. Not built by
+# default (tags = ["manual"]); see each file's header comment to verify manually.
+cc_library(
+    name = "minimal_warnings_violation",
+    srcs = ["warnings/minimal_violation.cpp"],
+    tags = ["manual"],
+)
+
+cc_library(
+    name = "strict_warnings_violation",
+    srcs = ["warnings/strict_violation.cpp"],
+    tags = ["manual"],
+)
+
+cc_library(
+    name = "all_wall_warnings_violation",
+    srcs = ["warnings/all_wall_violation.cpp"],
+    tags = ["manual"],
+)
+
 # =======================================================================
