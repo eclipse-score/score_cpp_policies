@@ -10,6 +10,7 @@ Planned: clang-format, code coverage policies.
 
 - **[`sanitizers/`](sanitizers/README.md)** — ASan/UBSan/LSan/TSan Bazel `cc_feature`s, ready-to-use `--config=` aliases, suppression files, and `target_compatible_with` constraints.
 - **[`clang_tidy/`](clang_tidy/README.md)** — centralized `.clang-tidy` baseline (conservative, tailorable per module) and a `--config=clang-tidy` Bazel integration.
+- **[`presets.bzl`](presets.bzl)** — sanitizers and clang-tidy as [bazelrc-preset.bzl](https://github.com/bazel-contrib/bazelrc-preset.bzl) presets, for consumers who'd rather generate their `.bazelrc` than hand-copy `sanitizers.bazelrc`/`clang_tidy.bazelrc`. See `sanitizers/README.md` § Distribution via bazelrc-preset.bzl.
 
 ## Sanitizers
 

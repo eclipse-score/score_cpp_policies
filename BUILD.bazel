@@ -15,6 +15,7 @@ exports_files(
     [
         "LICENSE.md",
         "NOTICE",
+        "presets.bzl",
     ],
     visibility = ["//visibility:public"],
 )
