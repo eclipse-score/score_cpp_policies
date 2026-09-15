@@ -25,6 +25,21 @@ cc_mutually_exclusive_category(
     visibility = ["//visibility:public"],
 )
 
+cc_mutually_exclusive_category(
+    name = "asan_tysan",
+    visibility = ["//visibility:public"],
+)
+
+cc_mutually_exclusive_category(
+    name = "lsan_tysan",
+    visibility = ["//visibility:public"],
+)
+
+cc_mutually_exclusive_category(
+    name = "tsan_tysan",
+    visibility = ["//visibility:public"],
+)
+
 cc_args(
     name = "debug_symbols_args",
     actions = [
@@ -63,7 +78,10 @@ cc_feature(
     ],
     feature_name = "score_asan",
     implies = ["debug_symbols"],
-    mutually_exclusive = [":asan_tsan"],
+    mutually_exclusive = [
+        ":asan_tsan",
+        ":asan_tysan",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -133,7 +151,10 @@ cc_feature(
     ],
     feature_name = "score_lsan",
     implies = ["debug_symbols"],
-    mutually_exclusive = [":lsan_tsan"],
+    mutually_exclusive = [
+        ":lsan_tsan",
+        ":lsan_tysan",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -165,6 +186,37 @@ cc_feature(
     mutually_exclusive = [
         ":asan_tsan",
         ":lsan_tsan",
+        ":tsan_tysan",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+cc_args(
+    name = "tysan_compile_args",
+    actions = ["@rules_cc//cc/toolchains/actions:compile_actions"],
+    args = ["-fsanitize=type"],
+    visibility = ["//visibility:public"],
+)
+
+cc_args(
+    name = "tysan_link_args",
+    actions = ["@rules_cc//cc/toolchains/actions:link_actions"],
+    args = ["-fsanitize=type"],
+    visibility = ["//visibility:public"],
+)
+
+cc_feature(
+    name = "tysan",
+    args = [
+        ":tysan_compile_args",
+        ":tysan_link_args",
+    ],
+    feature_name = "score_tysan",
+    implies = ["debug_symbols"],
+    mutually_exclusive = [
+        ":asan_tysan",
+        ":lsan_tysan",
+        ":tsan_tysan",
     ],
     visibility = ["//visibility:public"],
 )

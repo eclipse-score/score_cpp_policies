@@ -24,6 +24,7 @@ filegroup(
         "suppressions/asan.supp",
         "suppressions/lsan.supp",
         "suppressions/tsan.supp",
+        "suppressions/tysan.supp",
         "suppressions/ubsan.supp",
     ],
     visibility = ["//visibility:public"],
@@ -34,6 +35,7 @@ _SANITIZERS = {
     "ubsan": "templates/ubsan.env.template",
     "lsan": "templates/lsan.env.template",
     "tsan": "templates/tsan.env.template",
+    "tysan": "templates/tysan.env.template",
 }
 
 _ROOTS = {
@@ -79,6 +81,11 @@ sh_binary(
         "//sanitizers/flags:tsan_on": [
             "suppressions/tsan.supp",
             ":tsan_relative_env",
+        ],
+        "//conditions:default": [],
+    }) + select({
+        "//sanitizers/flags:tysan_on": [
+            ":tysan_relative_env",
         ],
         "//conditions:default": [],
     }),
