@@ -23,6 +23,7 @@ build:asan          --extra_toolchains=@llvm_toolchain//:cc-toolchain-x86_64-lin
 build:ubsan         --extra_toolchains=@llvm_toolchain//:cc-toolchain-x86_64-linux
 build:lsan          --extra_toolchains=@llvm_toolchain//:cc-toolchain-x86_64-linux
 build:tsan          --extra_toolchains=@llvm_toolchain//:cc-toolchain-x86_64-linux
+build:tysan         --extra_toolchains=@llvm_toolchain//:cc-toolchain-x86_64-linux
 build:asan_ubsan_lsan --extra_toolchains=@llvm_toolchain//:cc-toolchain-x86_64-linux
 build:tsan_ubsan    --extra_toolchains=@llvm_toolchain//:cc-toolchain-x86_64-linux
 
@@ -42,6 +43,11 @@ test:feature_only_lsan   --test_env=LSAN_OPTIONS=exitcode=55
 build:feature_only_tsan  --extra_toolchains=@llvm_toolchain//:cc-toolchain-x86_64-linux
 build:feature_only_tsan  --features=score_tsan
 test:feature_only_tsan   --test_env=TSAN_OPTIONS=exitcode=55:halt_on_error=1
+
+# TySan (Clang/LLVM only — no GCC variant available).
+build:feature_only_tysan --extra_toolchains=@llvm_toolchain//:cc-toolchain-x86_64-linux
+build:feature_only_tysan --features=score_tysan
+test:feature_only_tysan  --test_env=TYSAN_OPTIONS=exitcode=55:halt_on_error=1
 
 # Combination configs — parallel to asan_ubsan_lsan / tsan_ubsan but cc_feature only.
 build:feature_only_asan_ubsan_lsan --extra_toolchains=@llvm_toolchain//:cc-toolchain-x86_64-linux

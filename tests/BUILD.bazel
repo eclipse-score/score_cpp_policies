@@ -59,6 +59,12 @@ cc_test(
 )
 
 cc_test(
+    name = "feature_injection_tysan",
+    srcs = ["feature_injection/tysan_injection_test.cpp"],
+    tags = ["manual"],
+)
+
+cc_test(
     name = "feature_injection_positive",
     srcs = ["feature_injection/sanitizer_positive_test.cpp"],
     tags = ["manual"],
@@ -120,6 +126,16 @@ sh_test(
     tags = ["manual"],
 )
 
+sh_test(
+    name = "feature_injection_tysan_runtime",
+    srcs = ["negative/verify_tysan_failure.sh"],
+    args = [
+        "$(location :tysan_fail_test)",
+    ],
+    data = [":tysan_fail_test"],
+    tags = ["manual"],
+)
+
 # Exercises ASan violation detection in the combo. UBSan runtime is covered
 # separately by feature_injection_ubsan_runtime.
 sh_test(
@@ -151,7 +167,10 @@ sh_test(
 cc_test(
     name = "sample_test",
     srcs = ["sample_test.cpp"],
-    target_compatible_with = ["@score_cpp_policies//sanitizers/constraints:no_tsan"],  # GoogleTest has known TSan false positives
+    target_compatible_with = [
+        "@score_cpp_policies//sanitizers/constraints:no_tsan",
+        "@score_cpp_policies//sanitizers/constraints:no_tysan",
+    ],  # GoogleTest has known TSan false positives
     deps = [
         "@googletest//:gtest",
         "@googletest//:gtest_main",
@@ -178,6 +197,12 @@ cc_binary(
     name = "tsan_fail_test",
     testonly = True,
     srcs = ["negative/tsan_fail.cpp"],
+)
+
+cc_binary(
+    name = "tysan_fail_test",
+    testonly = True,
+    srcs = ["negative/tysan_fail.cpp"],
 )
 
 cc_binary(
@@ -221,6 +246,16 @@ sh_test(
     ],
     data = [":tsan_fail_test"],
     target_compatible_with = ["@score_cpp_policies//sanitizers/constraints:only_tsan"],
+)
+
+sh_test(
+    name = "tysan_fail",
+    srcs = ["negative/verify_tysan_failure.sh"],
+    args = [
+        "$(location :tysan_fail_test)",
+    ],
+    data = [":tysan_fail_test"],
+    target_compatible_with = ["@score_cpp_policies//sanitizers/constraints:only_tysan"],
 )
 
 sh_test(
