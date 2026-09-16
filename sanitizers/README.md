@@ -2,7 +2,7 @@
 
 Centralized sanitizer infrastructure for S-CORE C++ modules.
 
-Each sanitizer (ASan, UBSan, LSan, TSan) is independently configurable via a
+Each sanitizer (ASan, UBSan, LSan, TSan, TySan) is independently configurable via a
 dedicated Bazel config flag. Sanitizers can be used in isolation or combined.
 
 ---
@@ -46,7 +46,13 @@ bazel test --config=asan_ubsan_lsan //your/target/...
 
 # Run tests with TSan + UBSan
 bazel test --config=tsan_ubsan //your/target/...
+
+# Run tests with TypeSanitizer (Clang/LLVM only)
+bazel test --config=tysan //your/target/...
 ```
+
+TySan is experimental and still under development. Run it separately from UBSan
+for now.
 
 ---
 
@@ -54,7 +60,7 @@ bazel test --config=tsan_ubsan //your/target/...
 
 ```
 sanitizers/
-├── sanitizers.bazelrc   # --config=asan/ubsan/lsan/tsan/asan_ubsan_lsan/tsan_ubsan
+├── sanitizers.bazelrc   # --config=asan/ubsan/lsan/tsan/tysan/asan_ubsan_lsan/tsan_ubsan
 ├── flags/               # bool_flag per sanitizer; config_setting_group for combinations
 ├── features/            # cc_feature per sanitizer (score_asan, score_ubsan, ...)
 ├── constraints/         # no_*/only_* target_compatible_with aliases
@@ -66,12 +72,12 @@ sanitizers/
 
 ### `flags/` — Build-time boolean flags
 
-One `bool_flag` per sanitizer (`asan`, `ubsan`, `lsan`, `tsan`) and corresponding
+One `bool_flag` per sanitizer (`asan`, `ubsan`, `lsan`, `tsan`, `tysan`) and corresponding
 `config_setting`s (`asan_on`, `ubsan_on`, ...). Composite groups:
 
 | Group | Meaning |
 |---|---|
-| `any_sanitizer` | True if any of the four flags is set |
+| `any_sanitizer` | True if any of the five flags is set |
 | `any_asan_ubsan_lsan` | True if ASan **or** UBSan **or** LSan is set |
 | `asan_ubsan_lsan` | True only if **all three** of ASan, UBSan, LSan are set |
 
@@ -92,6 +98,7 @@ toolchain built-in feature names:
 | `ubsan_clang` | `score_ubsan_clang` | Clang | implies `ubsan_base` + `-fsanitize-link-c++-runtime` (link) |
 | `lsan` | `score_lsan` | both | `-fsanitize=leak` |
 | `tsan` | `score_tsan` | both | `-fsanitize=thread`, `-O1` |
+| `tysan` | `score_tysan` | Clang/LLVM | `-fsanitize=type` |
 | `debug_symbols` | `debug_symbols` | both | `-g1` |
 
 The `with_debug_symbols` config adds `--strip=never`. Each sanitizer feature
@@ -108,13 +115,18 @@ Register the toolchain-appropriate target (`ubsan_gcc` or `ubsan_clang`) in `ext
 #### Mutually exclusive runtimes (primary enforcement)
 
 TSan uses a different runtime library than ASan/LSan, so those pairs cannot be
-enabled together. This incompatibility is modeled directly in the feature layer
-via `cc_mutually_exclusive_category` targets:
+enabled together. TySan is also incompatible with ASan, LSan, and TSan because
+their shadow-memory runtimes cannot be combined. These incompatibilities are
+modeled directly in the feature layer via `cc_mutually_exclusive_category`
+targets:
 
 | Category | Members |
 |---|---|
 | `asan_tsan` | `score_asan`, `score_tsan` |
 | `lsan_tsan` | `score_lsan`, `score_tsan` |
+| `asan_tysan` | `score_asan`, `score_tysan` |
+| `lsan_tysan` | `score_lsan`, `score_tysan` |
+| `tsan_tysan` | `score_tsan`, `score_tysan` |
 
 When a toolchain enables both features in a mutually exclusive category, Bazel
 fails at **analysis time** with an explicit error, e.g.:
@@ -172,11 +184,13 @@ Available constraints:
 | `no_ubsan` | Skip when UBSan is active |
 | `no_lsan` | Skip when LSan is active |
 | `no_tsan` | Skip when TSan is active |
+| `no_tysan` | Skip when TySan is active |
 | `no_asan_ubsan_lsan` | Skip when **any** of ASan, UBSan, or LSan is active (see note below) |
 | `only_asan` | Only run when ASan is active |
 | `only_ubsan` | Only run when UBSan is active |
 | `only_lsan` | Only run when LSan is active |
 | `only_tsan` | Only run when TSan is active |
+| `only_tysan` | Only run when TySan is active |
 
 > **Note — `no_asan_ubsan_lsan` semantic:**
 > In the previous single-flag API, `no_asan_ubsan_lsan` was satisfied only when the
@@ -200,16 +214,19 @@ Available constraints:
 
 The following table lists the supported presets and selected combinations:
 
-| ASan | UBSan | LSan | TSan | Status | Preset |
-|:---:|:---:|:---:|:---:|---|---|
-| ✓ | | | | ✅ Supported | `--config=asan` |
-| | ✓ | | | ✅ Supported | `--config=ubsan` |
-| ✓ | | ✓ | | ✅ Supported | `--config=asan` + `--config=lsan` |
-| ✓ | ✓ | ✓ | | ✅ Supported | `--config=asan_ubsan_lsan` (**recommended**) |
-| | | | ✓ | ✅ Supported | `--config=tsan` |
-| | ✓ | | ✓ | ✅ Supported | `--config=tsan_ubsan` |
-| ✓ | | | ✓ | ❌ **Invalid** | ASan+TSan: incompatible runtime libraries |
-| | | ✓ | ✓ | ❌ **Invalid** | LSan+TSan: TSan has built-in leak detection |
+| ASan | UBSan | LSan | TSan | TySan | Status | Preset |
+|:---:|:---:|:---:|:---:|:---:|---|---|
+| ✓ | | | | | ✅ Supported | `--config=asan` |
+| | ✓ | | | | ✅ Supported | `--config=ubsan` |
+| ✓ | | ✓ | | | ✅ Supported | `--config=asan` + `--config=lsan` |
+| ✓ | ✓ | ✓ | | | ✅ Supported | `--config=asan_ubsan_lsan` (**recommended**) |
+| | | | ✓ | | ✅ Supported | `--config=tsan` |
+| | ✓ | | ✓ | | ✅ Supported | `--config=tsan_ubsan` |
+| ✓ | | | ✓ | | ❌ **Invalid** | ASan+TSan: incompatible runtime libraries |
+| | | ✓ | ✓ | | ❌ **Invalid** | LSan+TSan: TSan has built-in leak detection |
+| ✓ | | | | ✓ | ❌ **Invalid** | ASan+TySan: incompatible shadow-memory runtimes |
+| | | ✓ | | ✓ | ❌ **Invalid** | LSan+TySan: incompatible shadow-memory runtimes |
+| | | | ✓ | ✓ | ❌ **Invalid** | TSan+TySan: incompatible shadow-memory runtimes |
 
 Invalid combinations are enforced primarily at the **feature level**: the
 `score_asan`/`score_lsan` and `score_tsan` features declare mutually exclusive
@@ -225,14 +242,16 @@ these at build time (the CI test suite depends on this target automatically via
 The test runner script. It is set via `--run_under` in `sanitizers.bazelrc`
 and sources all `*_relative_sanitizer.env` files present in its directory.
 Each env file sets sanitizer-specific runtime options (e.g. `ASAN_OPTIONS`,
-`TSAN_OPTIONS`) and points to the corresponding suppression file.
+`TSAN_OPTIONS`, `TYSAN_OPTIONS`) and points to the corresponding suppression
+file. TySan uses [`suppressions/tysan.supp`](suppressions/tysan.supp).
 
 ---
 
 ## Toolchain Registration
 
 Users of `score_bazel_cpp_toolchains` pass these policy targets through
-`extra_known_features`/`extra_enabled_features`. The policy is toolchain-neutral: use the matching UBSan
+`extra_known_features`/`extra_enabled_features`. The policy is toolchain-neutral
+except for TySan, which is supported only by Clang/LLVM; use the matching UBSan
 variant for the compiler package in use.
 
 ```python
@@ -246,6 +265,7 @@ llvm.toolchain(
         "@score_cpp_policies//sanitizers/features:ubsan_clang",
         "@score_cpp_policies//sanitizers/features:lsan",
         "@score_cpp_policies//sanitizers/features:tsan",
+        "@score_cpp_policies//sanitizers/features:tysan",
     ],
 )
 
@@ -271,7 +291,7 @@ Runtime suppression files live in `suppressions/`. Add suppressions for known
 false positives in your module's `.bazelrc` or by passing the suppression file
 path in the `*_OPTIONS` environment variable.
 
-`@score_cpp_policies//sanitizers:suppressions` exposes all four files as a
+`@score_cpp_policies//sanitizers:suppressions` exposes all five files as a
 `filegroup`, for consumers that need to package them alongside their own
 repo-specific suppressions (e.g. into an OCI/Docker image for integration
 testing) rather than relying on `wrapper` at test-run time.

@@ -16,7 +16,7 @@ The repository tests currently use these versions:
 
 - `score_bazel_cpp_toolchains` 1.0.2
 - `rules_cc` 0.2.17
-- `toolchains_llvm` 1.7.0
+- `toolchains_llvm` 1.8.0
 - GCC 12.2.0 and 15.3.0
 - Clang 19.1.7
 
@@ -54,6 +54,7 @@ aliases through [`sanitizers.bazelrc`](../sanitizers/sanitizers.bazelrc):
 | UndefinedBehaviorSanitizer | `--config=ubsan` |
 | LeakSanitizer | `--config=lsan` |
 | ThreadSanitizer | `--config=tsan` |
+| TypeSanitizer | `--config=tysan` (Clang/LLVM only) |
 | ASan + UBSan + LSan | `--config=asan_ubsan_lsan` |
 | TSan + UBSan | `--config=tsan_ubsan` |
 
@@ -75,6 +76,7 @@ the compiler-appropriate UBSan variant:
 | UBSan Clang variant | `@score_cpp_policies//sanitizers/features:ubsan_clang` | `score_ubsan_clang` | Clang |
 | LeakSanitizer | `@score_cpp_policies//sanitizers/features:lsan` | `score_lsan` | GCC and Clang |
 | ThreadSanitizer | `@score_cpp_policies//sanitizers/features:tsan` | `score_tsan` | GCC and Clang |
+| TypeSanitizer | `@score_cpp_policies//sanitizers/features:tysan` | `score_tysan` | Clang/LLVM only |
 
 The former aggregate GCC features `asan_ubsan_lsan_gcc` and `tsan_gcc` are
 removed. Replace them with the per-sanitizer labels above. In particular,
@@ -110,9 +112,13 @@ llvm.toolchain(
         "@score_cpp_policies//sanitizers/features:ubsan_clang",
         "@score_cpp_policies//sanitizers/features:lsan",
         "@score_cpp_policies//sanitizers/features:tsan",
+      "@score_cpp_policies//sanitizers/features:tysan",
     ],
 )
 ```
+
+The `tysan` feature is for Clang/LLVM only. It injects `-fsanitize=type`; do
+not register it with a GCC toolchain.
 
 ### Dependency and Bazel configuration
 
@@ -143,12 +149,21 @@ Supported combinations are:
 | TSan | `--config=tsan` |
 | ASan + UBSan + LSan | `--config=asan_ubsan_lsan` |
 | TSan + UBSan | `--config=tsan_ubsan` |
+| TySan | `--config=tysan` (Clang/LLVM only) |
 | ASan + LSan | `--config=asan --config=lsan` |
 
 ASan + TSan and LSan + TSan are invalid because their runtime libraries are
-incompatible; TSan also provides its own leak detection. The feature layer
-declares these pairs mutually exclusive, and the flag layer provides a
-secondary combination check. Do not create configs for these pairs.
+incompatible; TSan also provides its own leak detection. TySan is incompatible
+with ASan, LSan, and TSan because their shadow-memory runtimes cannot be
+combined. The feature layer declares these pairs mutually exclusive, and the
+flag layer provides a secondary combination check. Do not create configs for
+these pairs.
+
+TySan is experimental and still under development. Run it separately from UBSan
+for now.
+
+TySan runtime options are loaded through `TYSAN_OPTIONS`, including the policy
+suppression file at `sanitizers/suppressions/tysan.supp`.
 
 ### Constraints and duplicate flags
 
@@ -175,10 +190,13 @@ policy's feature composition and runtime checks.
    `--config=tsan`.
 4. Replace registrations of `asan_ubsan_lsan_gcc` and `tsan_gcc` with the
    per-sanitizer labels, including the matching `ubsan_gcc` or `ubsan_clang`.
-5. Remove duplicate sanitizer flags from project options and custom features.
-6. Review `no_asan_ubsan_lsan` uses and replace them with granular constraints
+5. For Clang/LLVM consumers using TypeSanitizer, register
+   `@score_cpp_policies//sanitizers/features:tysan` and use `--config=tysan`.
+6. Remove duplicate sanitizer flags from project options and custom features.
+7. Review `no_asan_ubsan_lsan` uses and replace them with granular constraints
    where that expresses the intended compatibility rule.
-7. Choose a supported config, run the validation commands below, and fix any
+8. Review `no_tysan` and `only_tysan` uses when migrating TySan-specific tests.
+9. Choose a supported config, run the validation commands below, and fix any
    sanitizer or runtime issues exposed by the new policy.
 
 ## Validation
