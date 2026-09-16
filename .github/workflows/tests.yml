@@ -31,7 +31,7 @@ jobs:
   test-sanitizers:
     name: Test ${{ matrix.config }}
     runs-on: ubuntu-24.04
-    
+
     strategy:
       fail-fast: false
       matrix:
@@ -48,7 +48,7 @@ jobs:
             description: "ThreadSanitizer"
           - config: tsan_ubsan
             description: "TSan + UBSan"
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -99,6 +99,11 @@ jobs:
             compile_target: feature_injection_tsan
             positive_target: feature_injection_positive
             runtime_target: feature_injection_tsan_runtime
+          - label: tysan
+            config: feature_only_tysan
+            compile_target: feature_injection_tysan
+            positive_target: feature_injection_positive
+            runtime_target: feature_injection_tysan_runtime
           - label: asan+ubsan+lsan
             config: feature_only_asan_ubsan_lsan
             compile_target: feature_injection_asan_ubsan_lsan
