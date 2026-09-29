@@ -8,7 +8,7 @@ Planned: clang-format, code coverage policies.
 
 ## What This Provides
 
-- **[`sanitizers/`](sanitizers/README.md)** — ASan/UBSan/LSan/TSan Bazel `cc_feature`s, ready-to-use `--config=` aliases, suppression files, and `target_compatible_with` constraints.
+- **[`sanitizers/`](sanitizers/README.md)** — ASan/UBSan/LSan/TSan/TySan Bazel `cc_feature`s, ready-to-use `--config=` aliases, suppression files, and `target_compatible_with` constraints.
 - **[`clang_tidy/`](clang_tidy/README.md)** — centralized `.clang-tidy` baseline (conservative, tailorable per module) and a `--config=clang-tidy` Bazel integration.
 
 ## Sanitizers
@@ -19,8 +19,12 @@ Planned: clang-format, code coverage policies.
 | `--config=ubsan` | UndefinedBehaviorSanitizer | Integer overflow, null deref |
 | `--config=lsan` | LeakSanitizer | Memory leaks |
 | `--config=tsan` | ThreadSanitizer | Data races, deadlocks — cannot combine with ASan/LSan |
+| `--config=tysan` | TypeSanitizer | Type confusion — Clang/LLVM only; cannot combine with ASan/LSan/TSan |
 | `--config=asan_ubsan_lsan` | ASan + UBSan + LSan | **Recommended default for CI** |
 | `--config=tsan_ubsan` | TSan + UBSan | Threading + undefined behavior |
+
+TySan is experimental and still under development. Run it separately from UBSan
+for now.
 
 ## Sanitizer Combination Compatibility
 
@@ -31,13 +35,16 @@ Planned: clang-format, code coverage policies.
 | TSan + UBSan | ✅ Yes | Use `--config=tsan_ubsan` |
 | ASan + TSan | ❌ No | Incompatible runtime libraries (`libasan` vs `libtsan`) |
 | LSan + TSan | ❌ No | TSan has built-in leak detection; enabling both causes runtime conflicts |
+| TySan + ASan | ❌ No | Incompatible shadow-memory runtimes |
+| TySan + LSan | ❌ No | Incompatible shadow-memory runtimes |
+| TySan + TSan | ❌ No | Incompatible shadow-memory runtimes |
 
 Invalid combinations are enforced at three layers, strongest first:
 
 1. **Feature level (primary)** — the sanitizer `cc_feature`s declare
-   `mutually_exclusive` categories (`asan_tsan`, `lsan_tsan`), so
-   enabling `score_asan`+`score_tsan` or `score_lsan`+`score_tsan` through the
-   toolchain fails at **analysis time** with an explicit error
+   `mutually_exclusive` categories (`asan_tsan`, `lsan_tsan`,
+   `asan_tysan`, `lsan_tysan`, `tsan_tysan`), so enabling any invalid pair
+   through the toolchain fails at **analysis time** with an explicit error
    (`Symbol ...:asan_tsan is provided by all of the following features: score_asan score_tsan`).
    This protection is intrinsic to feature resolution and applies to every
    consumer automatically — no extra build-graph dependency required.

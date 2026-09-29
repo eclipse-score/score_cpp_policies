@@ -67,6 +67,15 @@ alias(
 )
 
 alias(
+    name = "no_tysan",
+    actual = select({
+        "//sanitizers/flags:tysan_on": "@platforms//:incompatible",
+        "//conditions:default": ":always_true",
+    }),
+    visibility = ["//visibility:public"],
+)
+
+alias(
     name = "no_asan_ubsan_lsan",
     actual = select({
         "//sanitizers/flags:any_asan_ubsan_lsan": "@platforms//:incompatible",
@@ -107,6 +116,15 @@ alias(
     name = "only_tsan",
     actual = select({
         "//sanitizers/flags:tsan_on": ":always_true",
+        "//conditions:default": "@platforms//:incompatible",
+    }),
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "only_tysan",
+    actual = select({
+        "//sanitizers/flags:tysan_on": ":always_true",
         "//conditions:default": "@platforms//:incompatible",
     }),
     visibility = ["//visibility:public"],

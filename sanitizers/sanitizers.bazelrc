@@ -46,6 +46,12 @@ build:tsan --platform_suffix=tsan
 build:tsan --config=with_debug_symbols
 test:tsan  --run_under=@score_cpp_policies//sanitizers:wrapper
 
+build:tysan --features=score_tysan
+build:tysan --@score_cpp_policies//sanitizers/flags:tysan=True
+build:tysan --platform_suffix=tysan
+build:tysan --config=with_debug_symbols
+test:tysan  --run_under=@score_cpp_policies//sanitizers:wrapper
+
 # ==============================================================================
 # Composite configs — convenience aliases for common combinations
 # ==============================================================================
