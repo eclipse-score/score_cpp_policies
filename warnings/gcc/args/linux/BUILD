@@ -125,7 +125,6 @@ cc_args(
         "-Wcomment",
         "-Wdangling-else",
         "-Wdangling-pointer=2",
-        "-Wduplicate-decl-specifier",
         "-Wenum-compare",
         "-Wformat-contains-nul",
         "-Wformat-diag",
@@ -191,6 +190,7 @@ cc_args(
         "-Wimplicit-int",
         "-Wpointer-sign",
         "-Wvla-parameter",
+        "-Wduplicate-decl-specifier",
     ],
     visibility = ["//visibility:public"],
 )
