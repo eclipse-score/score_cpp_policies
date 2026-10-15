@@ -1,16 +1,24 @@
 # Compiler Warnings
 
-Centralized GCC warning `cc_feature`s for S-CORE C++ modules. Warnings are
-grouped into three cumulative severity levels plus a separate opt-in toggle
-that turns warnings into build errors.
+Centralized warning `cc_feature`s for S-CORE C++ modules:
+
+- **GCC** warnings, grouped into three cumulative severity levels plus a
+  separate opt-in toggle that turns warnings into build errors (see
+  [Feature levels](#feature-levels)).
+- **MISRA C++:2023** Guideline Enforcement Plan (GEP) warnings, available for
+  both **Clang** and **GCC** (see [`misra_cpp_2023`](#misra_cpp_2023)).
 
 ## Architecture
 
 ```
 warnings/
+├── clang/
+│   └── features/
+│       └── misra_cpp_2023/ # cc_feature: misra_cpp_2023_warnings (Clang GEP flags)
 └── gcc/
     ├── features/         # Public cc_feature entry points
-    │   └── BUILD          #   minimal_warnings, strict_warnings, all_wall_warnings, warnings_as_errors
+    │   ├── BUILD          #   minimal_warnings, strict_warnings, all_wall_warnings, warnings_as_errors
+    │   └── misra_cpp_2023/ # cc_feature: misra_cpp_2023_warnings (GCC GEP flags)
     ├── args/             # cc_args_list combining the per-OS arg targets below
     └── args/{linux,qnx}/ # Actual -W flag lists (differ per OS due to GCC version/platform quirks)
 ```
@@ -327,6 +335,160 @@ enabled to a hard compile error.
 |---|---|---|
 | `-Werror` | Linux & QNX | Turn every currently-enabled warning into a compile error, so a build cannot succeed while warnings remain. |
 | `-Wno-error=deprecated-declarations` | Linux only | Exempt deprecated-declaration warnings from the `-Werror` escalation above — deprecations are advisory and shouldn't block a build. |
+
+---
+
+## `misra_cpp_2023`
+
+Compiler warnings mapped to the [MISRA C++:2023 Guideline Enforcement Plan (GEP)](https://github.com/eclipse-score/communication/blob/main/quality/static_analysis/misra_gep.md),
+which lists which MISRA rules/directives can be covered by compiler
+diagnostics instead of a separate static analysis tool. Unlike the GCC
+severity levels above, this is a single, non-cumulative feature per
+toolchain — it does not imply and is not implied by `minimal_warnings`,
+`strict_warnings`, or `all_wall_warnings`.
+
+Both toolchain variants expose the same public feature name,
+`misra_cpp_2023_warnings`, but live at different labels and carry a
+different, toolchain-specific flag set (Clang and GCC diagnose different
+subsets of the GEP with different flag names):
+
+| Toolchain | Target |
+|---|---|
+| Clang | `@score_cpp_policies//warnings/clang/features/misra_cpp_2023:misra_cpp_2023` |
+| GCC | `@score_cpp_policies//warnings/gcc/features/misra_cpp_2023:misra_cpp_2023` |
+
+### Enabling this feature
+
+As with the GCC severity levels, this `cc_feature` is external to
+`score_bazel_cpp_toolchains` and must be injected into the toolchain module
+extension via `extra_known_features` (and `extra_enabled_features` if it
+should be on by default):
+
+```starlark
+# Clang
+llvm = use_extension("@toolchains_llvm//toolchain/extensions:llvm.bzl", "llvm")
+llvm.toolchain(
+    extra_known_features = [
+        "@score_cpp_policies//warnings/clang/features/misra_cpp_2023:misra_cpp_2023",
+    ],
+    ...
+)
+
+# GCC
+gcc = use_extension("@score_bazel_cpp_toolchains//extensions:gcc.bzl", "gcc")
+gcc.toolchain(
+    extra_known_features = [
+        "@score_cpp_policies//warnings/gcc/features/misra_cpp_2023:misra_cpp_2023",
+    ],
+    ...
+)
+```
+
+Then enable it via `--features=misra_cpp_2023_warnings` or a target's
+`features` attribute. It is not composed with `warnings_as_errors` — pair it
+with that feature yourself if violations should fail the build.
+
+### Clang flags
+
+| Flag | What it does |
+|---|---|
+| `-Wunreachable-code` | Warn about code that can never be executed, e.g. statements after an unconditional `return`/`break`/`continue`/`throw`. |
+| `-Wunreachable-code-return` | Warn about a `return` statement that can never be reached — a more targeted subset of `-Wunreachable-code`. |
+| `-Wtautological-unsigned-zero-compare` | Warn about a comparison of an unsigned value against `0` that is always true or false (e.g. `unsigned >= 0`). |
+| `-Wtautological-type-limit-compare` | Warn about a comparison that is always true/false because the compared type's range can't exceed the given limit. |
+| `-Wunused-variable` | Warn about a local or file-scope variable that is declared but never used. |
+| `-Wunused-exception-parameter` | Warn about a `catch` parameter that is declared but never used. |
+| `-Wunused-lambda-capture` | Warn about a lambda capture that is never used inside the lambda body. |
+| `-Wunused-parameter` | Warn about a function parameter that is declared but never used. |
+| `-Wunused-function` | Warn about a `static` function that is declared but never defined or used. |
+| `-Wunused-member-function` | Warn about a private member function that is declared but never used. |
+| `-Wunused-template` | Warn about an internal-linkage function or member template that is never instantiated. |
+| `-Wdeprecated` | Warn about uses of constructs or standard-library entities marked `[[deprecated]]` or deprecated by the C++ standard. |
+| `-Wsequence-point` | Warn about code whose result depends on an unspecified order of side effects between sequence points. |
+| `-Wunsequenced` | Warn about expressions with unsequenced modifications and accesses to the same scalar object. |
+| `-Wtrigraphs` | Warn about trigraphs that might change the meaning of the program. |
+| `-Wcomment` | Warn about a `/*` nested inside a `/* */` comment, or a `//` comment continued across lines via a trailing backslash. |
+| `-Wuser-defined-literals` | Warn about ill-formed use or definition of a user-defined literal suffix. |
+| `-Wunknown-escape-sequence` | Warn about an unrecognized character escape sequence in a string or character literal. |
+| `-Wredundant-parens` | Warn about parentheses that are redundant and can be removed without changing the expression's meaning. |
+| `-Wvexing-parse` | Warn about a declaration that parses as a function declaration where a variable definition was likely intended (C++'s "most vexing parse"). |
+| `-Wshadow-all` | Enable Clang's full family of shadowing warnings — locals, fields, `typedef`s, etc. shadowing an outer declaration. |
+| `-Wreturn-stack-address` | Warn about returning the address of, or a reference to, a stack variable, parameter, or temporary that is destroyed when the function returns. |
+| `-Wswitch-bool` | Warn when a `switch` statement's controlling expression has `bool` type. |
+| `-Wconstant-conversion` | Warn when an implicit conversion of a constant expression would change its value, e.g. an out-of-range literal assigned to a smaller type. |
+| `-Wimplicit-int-conversion` | Warn about an implicit integer conversion that may change the value, e.g. converting a wider type to a narrower one. |
+| `-Wshift-sign-overflow` | Warn when left-shifting a signed value would overflow into, or past, the sign bit. |
+| `-Wsign-compare` | Warn about comparisons between signed and unsigned values that could produce an unexpected result. |
+| `-Wc++11-narrowing` | Warn about a narrowing conversion inside a brace-enclosed initializer list, which is ill-formed in standard C++11 and later. |
+| `-Wsign-conversion` | Warn about implicit conversions between signed and unsigned integers that may change the value's sign or magnitude. |
+| `-Wzero-as-null-pointer-constant` | Warn when a literal `0` is used as a null pointer constant instead of `nullptr`. |
+| `-Wtautological-pointer-compare` | Warn about a pointer comparison that is always true or false, e.g. comparing the address of a local variable against `nullptr`. |
+| `-Wparentheses` | Warn about likely-missing parentheses, e.g. mixing `&&`/`||` without grouping, or using assignment as a truth value. |
+| `-Wreinterpret-base-class` | Warn about a `reinterpret_cast` between a pointer to a class and a pointer to its base/derived class, which may not point at the expected sub-object. |
+| `-Wold-style-cast` | Warn about the use of a C-style cast (`(T)x`) in C++ code instead of a named cast such as `static_cast`. |
+| `-Wcast-qual` | Warn when a cast removes a type qualifier from a pointer, e.g. casting away `const` or `volatile`. |
+| `-Wpointer-to-int-cast` | Warn about casting a pointer to an integer type too small to hold it without truncation. |
+| `-Winfinite-recursion` | Warn about a function call that can be statically determined to recurse indefinitely. |
+| `-Warray-bounds` | Warn about an array subscript or index that is statically known to be out of bounds. |
+| `-Warray-bounds-pointer-arithmetic` | Warn about pointer arithmetic that is statically known to go out of an array's bounds. |
+| `-Wcomma` | Warn about a comma operator whose left-hand side has no side effects, which usually indicates a typo such as a missing `&&`. |
+| `-Wunused-value` | Warn about an expression statement whose computed value is discarded with no side effect. |
+| `-Wdangling-else` | Warn about an `else` that indentation suggests belongs to a different `if` than the one it actually binds to. |
+| `-Wmisleading-indentation` | Warn about code whose indentation suggests a different block structure than the braces actually produce. |
+| `-Wempty-body` | Warn about an empty body (a stray `;`) for an `if`/`else`/`for`/`while` statement, which usually indicates a missing block. |
+| `-Wimplicit-fallthrough` | Warn about `switch` cases that fall through to the next case without an explicit `break`, unless annotated with `[[fallthrough]]`. |
+| `-Wswitch` | Warn when a `switch` on an `enum` doesn't handle all enumerators and has no `default`. |
+| `-Wswitch-default` | Warn when a `switch` statement has no `default` label. |
+| `-Wswitch-enum` | Warn when a `switch` on an `enum` doesn't have a case for every enumerator, even if a `default` is present. |
+| `-Wdangling-gsl` | Warn about a pointer/reference obtained from a temporary lifetime-annotated (`gsl::`) object that will dangle once the temporary is destroyed. |
+| `-Winvalid-noreturn` | Warn about a function declared `[[noreturn]]` that can actually return. |
+| `-Wreturn-type` | Warn about a non-`void` function with a code path lacking a `return`, or a `void` function returning a value. |
+| `-Wignored-qualifiers` | Warn when a `const`/`volatile` qualifier on a return type has no effect, e.g. on a by-value return. |
+| `-Wshadow` | Warn whenever a local variable, parameter, or type shadows another one of the same name from an outer scope. |
+| `-Wenum-compare` | Warn about comparisons between values of two different enumerated types. |
+| `-Wuninitialized` | Warn about variables used before being initialized on some code path. |
+| `-Wduplicate-enum` | Warn about two enumerators in the same enum sharing the same value where it looks unintentional. |
+| `-Winconsistent-missing-destructor-override` | Warn when a class overrides a base class's virtual destructor without marking its own `override`. |
+| `-Winconsistent-missing-override` | Warn when a virtual function overrides a base-class member but isn't itself marked `override`. |
+| `-Wextra-semi-stmt` | Warn about an extraneous, empty statement caused by a stray semicolon. |
+| `-Wcall-to-pure-virtual-from-ctor-dtor` | Warn about a constructor or destructor calling a pure virtual function, which cannot resolve to a derived class's override. |
+| `-Wexceptions` | Warn about exception-handling constructs that are ill-formed or behave unexpectedly, e.g. throwing out of a `noexcept` function. |
+| `-Wexpansion-to-defined` | Warn when the `defined` operator is produced by macro expansion, which has undefined behavior per the C/C++ standard. |
+| `-Wundef` | Warn when a non-macro identifier is evaluated inside `#if` (it silently evaluates to `0`). |
+| `-Wendif-labels` | Warn about text following `#endif`/`#else` that isn't a comment. |
+| `-Wextra-tokens` | Warn about extra tokens after a preprocessor directive, e.g. trailing text after `#endif`. |
+| `-Wembedded-directive` | Warn about a preprocessor directive that appears inside the arguments of a macro invocation. |
+| `-Wpragma-once-outside-header` | Warn if `#pragma once` appears in a file that isn't being used as a header. |
+| `-Wdelete-incomplete` | Warn about `delete`-ing a pointer to an incomplete type, whose destructor (if any) cannot be run. |
+
+### GCC flags
+
+| Flag | What it does |
+|---|---|
+| `-Wtype-limits` | Warn about comparisons that are always true or false due to the limited range of the operand's type, e.g. an unsigned value compared `< 0`. |
+| `-Wunused-variable` | See `minimal_warnings` above. |
+| `-Wunused-local-typedefs` | See `all_wall_warnings` above. |
+| `-Wunused-function` | See `all_wall_warnings` above. |
+| `-Wtrigraphs` | See `all_wall_warnings` above. |
+| `-Wcomment` | See `all_wall_warnings` above. |
+| `-Wparentheses` | See `all_wall_warnings` above. |
+| `-Wshadow` | See `strict_warnings` (QNX) above. |
+| `-Wreturn-local-addr` | See `minimal_warnings` above. |
+| `-Wswitch-bool` | See `minimal_warnings` above. |
+| `-Wsign-compare` | See `all_wall_warnings` above. |
+| `-Wconversion` | See `strict_warnings` above. |
+| `-Wfloat-conversion` | See `strict_warnings` (QNX) above. |
+| `-Waddress` | See `all_wall_warnings` above. |
+| `-Wcast-function-type` | Warn about a function pointer cast to a type with an incompatible signature, which is undefined behavior if called through the cast type. |
+| `-Wdangling-else` | See `all_wall_warnings` above. |
+| `-Wmisleading-indentation` | See `all_wall_warnings` above. |
+| `-Wreturn-type` | See `all_wall_warnings` above. |
+| `-Wignored-qualifiers` | Warn when a `const`/`volatile` qualifier on a return type has no effect, e.g. on a by-value return. |
+| `-Wenum-compare` | See `all_wall_warnings` above. |
+| `-Wuninitialized` | See `all_wall_warnings` above. |
+| `-Wterminate` | Warn about a `throw` that would exit a `noexcept` function via `std::terminate`, or a destructor that may throw. |
+| `-Wexpansion-to-defined` | Warn when the `defined` operator is produced by macro expansion, which has undefined behavior per the C/C++ standard. |
+| `-Wdelete-incomplete` | Warn about `delete`-ing a pointer to an incomplete type, whose destructor (if any) cannot be run. |
 
 ---
 
