@@ -213,7 +213,6 @@ cc_args(
         "-Woverloaded-virtual",
         "-Wpessimizing-move",
         "-Wrange-loop-construct",
-        "-Wuseless-cast",
     ],
     visibility = ["//visibility:public"],
 )

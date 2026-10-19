@@ -223,7 +223,6 @@ cc_args(
         "-Wmismatched-new-delete",
         "-Wpessimizing-move",
         "-Wrange-loop-construct",
-        "-Wuseless-cast",
     ],
     visibility = ["//visibility:public"],
 )
