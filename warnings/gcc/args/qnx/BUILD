@@ -137,7 +137,6 @@ cc_args(
         "-Wcomment",
         "-Wdangling-else",
         "-Wdangling-pointer=2",
-        "-Wduplicate-decl-specifier",
         "-Wenum-compare",
         "-Wformat-contains-nul",
         "-Wformat-diag",
@@ -198,6 +197,7 @@ cc_args(
         "@rules_cc//cc/toolchains/actions:c_compile_actions",
     ],
     args = [
+        "-Wduplicate-decl-specifier",
         "-Wimplicit",
         "-Wimplicit-function-declaration",
         "-Wimplicit-int",
