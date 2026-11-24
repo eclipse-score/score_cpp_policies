@@ -67,6 +67,7 @@ sanitizers/
 ├── suppressions/        # Per-sanitizer suppression files (*.supp)
 ├── templates/           # Per-sanitizer runtime env-var templates
 ├── wrapper.sh           # Test runner: loads all active env files then exec "$@"
+├── runtime_libs         # (target) Shared sanitizer runtimes of the resolved toolchain
 └── private/             # Internal Starlark helpers (expand_template, etc.)
 ```
 
@@ -295,6 +296,31 @@ path in the `*_OPTIONS` environment variable.
 `filegroup`, for consumers that need to package them alongside their own
 repo-specific suppressions (e.g. into an OCI/Docker image for integration
 testing) rather than relying on `wrapper` at test-run time.
+
+## Runtime Libraries
+
+GCC links sanitized binaries dynamically against its sanitizer runtimes
+(`libasan.so.8`, `liblsan.so.0`, `libtsan.so.2`, `libubsan.so.1` for GCC 12).
+A container that runs such binaries needs these libraries, too.
+`@score_cpp_policies//sanitizers:runtime_libs` provides them from the C++
+toolchain resolved for the target platform, so a module does not have to name
+the repository of its toolchain package. That name is only visible to the root
+module, so a hard-coded label breaks as soon as the module is used as a
+dependency.
+
+```python
+pkg_files(
+    name = "sanitizer_runtime_files",
+    srcs = ["@score_cpp_policies//sanitizers:runtime_libs"],
+    attributes = pkg_attributes(mode = "0755"),
+    prefix = "usr/lib/x86_64-linux-gnu",
+)
+```
+
+The target is empty for toolchains without these files, e.g. Clang, which links
+the sanitizer runtimes statically by default. Use the `sanitizer_runtime_libs`
+rule from `//sanitizers/private:runtime_libs.bzl` with a custom `libs` list to
+pick other runtimes.
 
 ---
 

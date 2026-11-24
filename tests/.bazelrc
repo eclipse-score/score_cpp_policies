@@ -83,6 +83,9 @@ build:feature_only_gcc_tsan  --extra_toolchains=@score_gcc_x86_64_toolchain_fi//
 build:feature_only_gcc_tsan  --features=score_tsan
 test:feature_only_gcc_tsan   --test_env=TSAN_OPTIONS=exitcode=55:halt_on_error=1
 
+# //sanitizers:runtime_libs picks the shared runtimes from the GCC toolchain package.
+build:gcc_runtime_libs --extra_toolchains=@score_gcc_x86_64_toolchain_fi//:x86_64-linux
+
 # Warnings features (warnings/gcc) are GCC-only, so these always pin the GCC
 # toolchain. Each config also enables warnings_as_errors so a false positive at
 # that severity level turns into a build failure instead of a silent warning.

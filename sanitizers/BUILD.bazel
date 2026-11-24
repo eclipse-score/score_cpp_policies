@@ -12,6 +12,7 @@
 # *******************************************************************************
 
 load("//sanitizers/private:expand_template.bzl", "expand_template")
+load("//sanitizers/private:runtime_libs.bzl", "sanitizer_runtime_libs")
 
 exports_files(
     ["sanitizers.bazelrc"],
@@ -27,6 +28,11 @@ filegroup(
         "suppressions/tysan.supp",
         "suppressions/ubsan.supp",
     ],
+    visibility = ["//visibility:public"],
+)
+
+sanitizer_runtime_libs(
+    name = "runtime_libs",
     visibility = ["//visibility:public"],
 )
 

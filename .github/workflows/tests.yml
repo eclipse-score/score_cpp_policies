@@ -158,6 +158,24 @@ jobs:
         working-directory: tests
         run: bazel test --config=${{ matrix.config }} //:${{ matrix.runtime_target }} --verbose_failures
 
+  test-runtime-libs:
+    name: Runtime libraries (gcc)
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Bazel
+        uses: bazel-contrib/setup-bazel@0.18.0
+        with:
+          bazelisk-cache: true
+          cache-save: ${{ github.event_name == 'push' }}
+
+      - name: Verify //sanitizers:runtime_libs provides the GCC sanitizer runtimes
+        working-directory: tests
+        run: bazel test --config=gcc_runtime_libs //:runtime_libs_gcc_test --verbose_failures
+
   test-warnings:
     name: Warnings feature (${{ matrix.label }})
     runs-on: ubuntu-24.04

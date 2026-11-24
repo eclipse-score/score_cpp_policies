@@ -273,6 +273,15 @@ sh_test(
 # Warnings feature tests (warnings/gcc) - GCC-only, see .bazelrc feature_only_gcc_*_warnings
 # ==============================================================================
 
+# Run with: bazel test --config=gcc_runtime_libs :runtime_libs_gcc_test
+sh_test(
+    name = "runtime_libs_gcc_test",
+    srcs = ["runtime_libs/verify_runtime_libs.sh"],
+    args = ["$(locations @score_cpp_policies//sanitizers:runtime_libs)"],
+    data = ["@score_cpp_policies//sanitizers:runtime_libs"],
+    tags = ["manual"],
+)
+
 # Must build clean at every severity level, even combined with warnings_as_errors.
 # Run with e.g.: bazel test --config=feature_only_gcc_all_wall_warnings :warnings_positive_test
 cc_test(
