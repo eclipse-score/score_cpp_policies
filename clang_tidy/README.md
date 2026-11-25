@@ -8,10 +8,10 @@ Centralized clang-tidy configuration for Eclipse S-CORE C++ modules.
 |------|---------|
 | `.clang-tidy` | Canonical S-CORE check set (conservative baseline, tailorable per module) |
 | `clang_tidy.bazelrc` | Importable Bazel flags that activate the `clang-tidy` test config |
+| `defs.bzl` | `make_clang_tidy_aspect` / `make_clang_tidy_test`, pre-wired with the baseline |
 
-This module ships **policy assets**, not API wrappers. Consumers wire up
-`lint_clang_tidy_aspect` / `lint_test` from `@aspect_rules_lint` directly —
-exactly the same pattern used by the `sanitizers` module.
+Consumers create their aspect with `make_clang_tidy_aspect` instead of calling
+`lint_clang_tidy_aspect` from `@aspect_rules_lint` directly.
 
 ## Setup (8 steps)
 
@@ -51,29 +51,25 @@ import %workspace%/path/to/clang_tidy.bazelrc   # if vendored locally
 ### 4 — Create `tools/lint/linters.bzl`
 
 ```python
-load("@aspect_rules_lint//lint:clang_tidy.bzl", "lint_clang_tidy_aspect")
-load("@aspect_rules_lint//lint:lint_test.bzl",  "lint_test")
+load("@score_cpp_policies//clang_tidy:defs.bzl", "make_clang_tidy_aspect", "make_clang_tidy_test")
 
-clang_tidy_aspect = lint_clang_tidy_aspect(
-    binary  = Label("@llvm_toolchain//:clang-tidy"),
-    configs = [
-        Label("@score_cpp_policies//clang_tidy:.clang-tidy"),  # central baseline
-        Label("//:.clang-tidy"),                               # local overrides (optional)
-    ],
-    lint_target_headers = True,
-    angle_includes_are_system = True,
+clang_tidy_aspect = make_clang_tidy_aspect(
+    binary = Label("@llvm_toolchain//:clang-tidy"),
+    local_configs = [Label("//:.clang-tidy")],  # optional, replaces the baseline
 )
 
-clang_tidy_test = lint_test(aspect = clang_tidy_aspect)
+clang_tidy_test = make_clang_tidy_test(aspect = clang_tidy_aspect)
 ```
 
-If you do not need per-module overrides, omit the `Label("//:.clang-tidy")` entry and
-skip step 5.
+Without `local_configs`, clang-tidy runs with the S-CORE baseline. If you do not need
+per-module overrides, omit `local_configs` and skip step 5.
 
 ### 5 — (Optional) Add a local `.clang-tidy` override
 
 Place a `.clang-tidy` at your repo root to extend or tighten the central check set.
-Use [`@score_cpp_policies//clang_tidy:.clang-tidy`](.clang-tidy) as the starting point.
+clang-tidy only reads `.clang-tidy` files in the directories above each linted file, so
+a local config **replaces** the baseline. Copy
+[`@score_cpp_policies//clang_tidy:.clang-tidy`](.clang-tidy) as the starting point.
 
 > **Advisory checks**: Checks in the `cppcoreguidelines-*` and `modernize-*` families are
 > advisory (warnings only). Only `clang-analyzer-*` is `WarningsAsErrors` by default.

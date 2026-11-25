@@ -16,7 +16,7 @@
 Consumers load make_clang_tidy_aspect and make_clang_tidy_test from this file
 instead of calling aspect_rules_lint directly. This guarantees:
 
-  1. The S-CORE baseline .clang-tidy is always the first config applied.
+  1. Modules without their own .clang-tidy are linted with the S-CORE baseline.
   2. SCORE-specific aspect defaults (lint_target_headers, angle_includes_are_system)
      are pre-wired without requiring each consumer to rediscover them.
   3. When aspect_rules_lint changes its API, only this file needs updating;
@@ -35,15 +35,18 @@ def make_clang_tidy_aspect(
         angle_includes_are_system = True):
     """Creates a clang-tidy aspect pre-wired with the S-CORE baseline config.
 
-    The S-CORE baseline is always prepended to the config list. local_configs
-    are applied on top and may only tighten checks or add module-specific
-    suppressions — they cannot remove the baseline.
+    Without local_configs, the S-CORE baseline is passed to clang-tidy as its
+    config file. clang-tidy only searches for .clang-tidy files in the
+    directories above the linted file, which never contain the baseline in
+    score_cpp_policies' external repository. So local_configs replace the
+    baseline; start them from the baseline to keep its checks.
 
     Args:
         binary: Label of the clang-tidy binary. Typically
                 Label("@llvm_toolchain//:clang-tidy").
         local_configs: Optional list of Labels for module-specific .clang-tidy
-                       overrides, applied AFTER the S-CORE baseline.
+                       files, found by clang-tidy's search above each linted
+                       file. They replace the S-CORE baseline.
         lint_target_headers: Whether to also analyze headers of each target.
                              Default True. Set False to reduce CI time on very
                              large build graphs.
@@ -54,9 +57,16 @@ def make_clang_tidy_aspect(
     Returns:
         A configured clang-tidy lint aspect.
     """
+    if local_configs:
+        return lint_clang_tidy_aspect(
+            binary = binary,
+            configs = local_configs,
+            lint_target_headers = lint_target_headers,
+            angle_includes_are_system = angle_includes_are_system,
+        )
     return lint_clang_tidy_aspect(
         binary = binary,
-        configs = [_BASELINE_CONFIG] + (local_configs or []),
+        global_config = [_BASELINE_CONFIG],
         lint_target_headers = lint_target_headers,
         angle_includes_are_system = angle_includes_are_system,
     )
