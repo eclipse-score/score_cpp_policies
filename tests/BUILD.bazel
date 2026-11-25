@@ -309,4 +309,11 @@ cc_library(
     tags = ["manual"],
 )
 
+# Documented clang-tidy violation; see the clang-tidy-baseline CI job.
+cc_library(
+    name = "clang_tidy_violation",
+    srcs = ["violations/clang_tidy_violation.cpp"],
+    tags = ["manual"],
+)
+
 # =======================================================================

@@ -235,4 +235,34 @@ jobs:
             exit 1
           fi
 
+  test-clang-tidy-baseline:
+    name: clang-tidy baseline
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Bazel
+        uses: bazel-contrib/setup-bazel@0.18.0
+        with:
+          bazelisk-cache: true
+          cache-save: ${{ github.event_name == 'push' }}
+
+      # bugprone-* is not among clang-tidy's default checks, so only the baseline reports it.
+      - name: Verify make_clang_tidy_aspect applies the baseline
+        working-directory: tests
+        run: |
+          bazel build //:clang_tidy_violation \
+            --aspects=//tools/lint:linters.bzl%clang_tidy_aspect \
+            --output_groups=rules_lint_human \
+            --extra_toolchains=@llvm_toolchain//:cc-toolchain-x86_64-linux \
+            --verbose_failures
+          report=bazel-bin/clang_tidy_violation_rules_lint/violations/clang_tidy_violation.cpp.AspectRulesLintClangTidy.out
+          cat "$report"
+          if ! grep -q 'bugprone-use-after-move' "$report"; then
+            echo "::error::clang-tidy did not report bugprone-use-after-move, so the S-CORE baseline was not applied"
+            exit 1
+          fi
+
 
